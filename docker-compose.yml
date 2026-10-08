@@ -1,0 +1,37 @@
+name: project-news
+
+services:
+    postgres:
+        image: postgres:18-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: project_news_db
+        ports:
+            - '5433:5432'
+        volumes:
+            - postgres_data:/var/lib/postgresql
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U postgres -d project_news_db']
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+    redis:
+        image: redis:8-alpine
+        restart: unless-stopped
+        command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+        ports:
+            - '6380:6379'
+        volumes:
+            - redis_data:/data
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 5s
+            timeout: 3s
+            retries: 10
+
+volumes:
+    postgres_data:
+    redis_data:
