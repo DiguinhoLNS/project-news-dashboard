@@ -6,4 +6,5 @@ export interface SourceArticle {
     siteName?: string
     author?: string
     publishedAt?: string
+    imageUrl?: string
 }

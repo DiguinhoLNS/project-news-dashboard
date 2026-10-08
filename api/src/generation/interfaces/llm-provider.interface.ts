@@ -8,13 +8,11 @@ export interface LlmUsage {
 }
 
 export interface LlmResponse {
-    /** JSON bruto devolvido pelo modelo; a validação acontece fora do provedor. */
     text: string
     model: string
     usage: LlmUsage
 }
 
-/** Adapter de um provedor de IA: trocar de provedor é escrever outra implementação. */
 export interface ILlmProvider {
     readonly name: string
     generateArticle(source: SourceArticle): Promise<LlmResponse>

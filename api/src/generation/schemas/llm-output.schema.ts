@@ -21,11 +21,21 @@ export const llmOutputSchema = z.object({
         .string()
         .describe('Título novo e informativo, com até 100 caracteres'),
     excerpt: z.string().describe('Resumo da matéria em 1 ou 2 frases'),
-    body_markdown: z
-        .string()
+    lead: z
+        .array(z.string())
         .describe(
-            'Corpo em Markdown com parágrafos separados por linha em branco: lide sem subtítulo seguido de 2 a 4 seções, cada uma iniciada por "## Subtítulo" em linha própria',
+            'Abertura da matéria: 1 ou 2 parágrafos, o primeiro resumindo o fato principal',
         ),
+    sections: z
+        .array(
+            z.object({
+                heading: z.string().describe('Subtítulo da seção'),
+                paragraphs: z
+                    .array(z.string())
+                    .describe('Parágrafos da seção, um por item'),
+            }),
+        )
+        .describe('De 2 a 4 seções que desenvolvem a matéria'),
     key_points: z
         .array(z.string())
         .describe('De 3 a 5 principais pontos da matéria, uma frase cada'),
@@ -38,16 +48,26 @@ export const llmOutputSchema = z.object({
 
 const text = (min: number, max: number) => z.string().trim().min(min).max(max)
 
-/** Subtítulos "##" em linha própria; grudados no parágrafo, o Markdown não os reconhece. */
-const SUBHEADING = /^##\s+\S/gm
+/** Um parágrafo por item: quebras de linha e "#" soltos viram texto corrido. */
+const paragraph = text(20, 3_000).transform((value) =>
+    value.replace(/^#+\s*/, '').replace(/\s+/g, ' '),
+)
 
 export const articleContentSchema = z.object({
     title: text(10, 140),
     excerpt: text(40, 500),
-    body_markdown: text(400, 30_000).refine(
-        (body) => (body.match(SUBHEADING) ?? []).length >= 2,
-        'o corpo precisa de ao menos 2 subtítulos "##" em linha própria',
-    ),
+    lead: z.array(paragraph).min(1).max(3),
+    sections: z
+        .array(
+            z.object({
+                heading: text(3, 120).transform((value) =>
+                    value.replace(/^#+\s*/, ''),
+                ),
+                paragraphs: z.array(paragraph).min(1).max(6),
+            }),
+        )
+        .min(2)
+        .max(4),
     key_points: z.array(text(10, 300)).min(3).max(5),
     tags: z.array(text(2, 40)).min(3).max(6),
     category: z.enum(ARTICLE_CATEGORIES),

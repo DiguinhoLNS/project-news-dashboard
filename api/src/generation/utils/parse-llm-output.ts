@@ -37,10 +37,20 @@ export function parseLlmOutput(raw: string): GeneratedArticle {
     }
 
     const article = content.data
+    // O Markdown é montado aqui, a partir da estrutura: o modelo não tem como
+    // errar a formatação (subtítulo grudado no texto, parágrafos sem quebra).
+    const bodyMarkdown = [
+        ...article.lead,
+        ...article.sections.flatMap((section) => [
+            `## ${section.heading}`,
+            ...section.paragraphs,
+        ]),
+    ].join('\n\n')
+
     return {
         title: article.title,
         excerpt: article.excerpt,
-        bodyMarkdown: article.body_markdown,
+        bodyMarkdown,
         keyPoints: article.key_points,
         tags: [...new Set(article.tags.map((tag) => tag.toLowerCase()))],
         category: article.category,

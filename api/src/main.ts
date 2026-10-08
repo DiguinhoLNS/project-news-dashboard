@@ -16,6 +16,7 @@ async function bootstrap() {
     app.useLogger(app.get(Logger))
 
     app.enableCors()
+    app.setGlobalPrefix('api')
 
     app.useGlobalPipes(
         new ValidationPipe({
@@ -33,7 +34,7 @@ async function bootstrap() {
         .build()
 
     const document = SwaggerModule.createDocument(app, swaggerConfig)
-    SwaggerModule.setup('api', app, document, {
+    SwaggerModule.setup('docs', app, document, {
         customSiteTitle: 'Project News Dashboard — API Docs',
         swaggerOptions: {
             persistAuthorization: true,

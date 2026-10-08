@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common'
-import { ConfigModule, ConfigService } from '@nestjs/config'
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { LoggerModule } from 'nestjs-pino'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
+import type { Env } from './config/interfaces/env.interface.js'
+import { validateEnv } from './config/env.validation.js'
+import { HealthModule } from './health/health.module.js'
+import { PostsModule } from './posts/posts.module.js'
+import { buildLoggerConfig } from './common/logger/logger.config.js'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js'
-import { buildLoggerConfig } from './common/logger/logger.config.js'
-import { validateEnv } from './config/env.validation.js'
-import type { Env } from './config/interfaces/env.interface.js'
-import { GenerationModule } from './generation/generation.module.js'
-import { HealthModule } from './health/health.module.js'
 
 @Module({
     imports: [
@@ -28,16 +28,23 @@ import { HealthModule } from './health/health.module.js'
         }),
         ThrottlerModule.forRootAsync({
             inject: [ConfigService],
-            useFactory: (configService: ConfigService<Env, true>) => [
-                {
-                    ttl:
-                        configService.get('THROTTLE_TTL', { infer: true }) *
-                        1000,
-                    limit: configService.get('THROTTLE_LIMIT', { infer: true }),
-                },
-            ],
+            useFactory: (configService: ConfigService<Env, true>) => ({
+                errorMessage:
+                    'Muitas requisições em pouco tempo. Tente novamente em instantes.',
+                throttlers: [
+                    {
+                        ttl:
+                            configService.get('THROTTLE_TTL', {
+                                infer: true,
+                            }) * 1000,
+                        limit: configService.get('THROTTLE_LIMIT', {
+                            infer: true,
+                        }),
+                    },
+                ],
+            }),
         }),
-        GenerationModule,
+        PostsModule,
         HealthModule,
     ],
     providers: [

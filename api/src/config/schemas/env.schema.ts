@@ -4,7 +4,7 @@ export const envSchema = z.object({
     NODE_ENV: z
         .enum(['development', 'production', 'test'])
         .default('development'),
-    PORT: z.coerce.number().int().positive().default(3000),
+    PORT: z.coerce.number().int().positive().default(3333),
     APP_NAME: z.string().trim().min(1).default('Project News Dashboard API'),
     LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
     THROTTLE_TTL: z.coerce.number().int().positive().default(60),
