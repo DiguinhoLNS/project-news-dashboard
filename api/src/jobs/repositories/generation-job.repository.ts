@@ -52,11 +52,16 @@ export class GenerationJobRepository implements IGenerationJobRepository {
 
     update(
         id: string,
-        { source, article, ...data }: UpdateGenerationJobData,
+        { source, article, payload, ...data }: UpdateGenerationJobData,
     ): Promise<GenerationJob> {
         return this.prisma.generationJob.update({
             where: { id },
-            data: { ...data, source: toJson(source), article: toJson(article) },
+            data: {
+                ...data,
+                source: toJson(source),
+                article: toJson(article),
+                payload: toJson(payload),
+            },
         })
     }
 }

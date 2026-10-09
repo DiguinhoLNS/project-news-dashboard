@@ -15,4 +15,5 @@ export const envSchema = z.object({
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
     GEMINI_API_KEY: z.string().trim().min(1, 'obrigatória'),
     GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.5-flash-lite'),
+    WORDPRESS_POST_STATUS: z.enum(['publish', 'draft']).default('publish'),
 })

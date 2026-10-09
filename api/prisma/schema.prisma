@@ -36,6 +36,7 @@ model GenerationJob {
     errorMessage  String?   @map("error_message")
     source        Json?
     article       Json?
+    payload       Json?
     llmProvider   String?   @map("llm_provider")
     llmModel      String?   @map("llm_model")
     inputTokens   Int?      @map("input_tokens")

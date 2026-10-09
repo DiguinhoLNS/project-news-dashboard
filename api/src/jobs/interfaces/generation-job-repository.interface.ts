@@ -1,5 +1,6 @@
 import type { GenerationJob, JobStatus } from '../../generated/prisma/client.js'
 import type { GeneratedArticle } from '../../generation/interfaces/generated-article.interface.js'
+import type { WordPressPostPayload } from '../../publishing/interfaces/wordpress-post-payload.interface.js'
 import type { SourceMetadata } from './source-metadata.interface.js'
 
 export interface CreateGenerationJobData {
@@ -13,6 +14,7 @@ export interface UpdateGenerationJobData {
     errorMessage?: string | null
     source?: SourceMetadata
     article?: GeneratedArticle
+    payload?: WordPressPostPayload
     llmProvider?: string
     llmModel?: string
     inputTokens?: number
