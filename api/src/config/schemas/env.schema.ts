@@ -7,6 +7,7 @@ export const envSchema = z.object({
     PORT: z.coerce.number().int().positive().default(3333),
     APP_NAME: z.string().trim().min(1).default('Project News Dashboard API'),
     DATABASE_URL: z.string().trim().min(1, 'obrigatória'),
+    REDIS_URL: z.string().trim().min(1, 'obrigatória'),
     LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
     THROTTLE_TTL: z.coerce.number().int().positive().default(60),
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),

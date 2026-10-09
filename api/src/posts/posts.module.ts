@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common'
-import { ExtractionModule } from '../extraction/extraction.module.js'
-import { GenerationModule } from '../generation/generation.module.js'
 import { JobsModule } from '../jobs/jobs.module.js'
+import { QueueModule } from '../queue/queue.module.js'
 import { GeneratePostController } from './controllers/generate-post.controller.js'
 import { GeneratePostService } from './services/generate-post.service.js'
 
 @Module({
-    imports: [ExtractionModule, GenerationModule, JobsModule],
+    imports: [JobsModule, QueueModule],
     controllers: [GeneratePostController],
     providers: [GeneratePostService],
 })

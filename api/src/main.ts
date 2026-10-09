@@ -6,6 +6,7 @@ import { type NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import type { Env } from './config/interfaces/env.interface.js'
 import { AppModule } from './app.module.js'
+import { setupQueueDashboard } from './queue/utils/setup-queue-dashboard.js'
 
 async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -17,6 +18,7 @@ async function bootstrap() {
 
     app.enableCors()
     app.setGlobalPrefix('api')
+    app.enableShutdownHooks()
 
     app.useGlobalPipes(
         new ValidationPipe({
@@ -40,6 +42,11 @@ async function bootstrap() {
             persistAuthorization: true,
         },
     })
+
+    // O painel expõe os dados dos jobs e permite reprocessá-los ou apagá-los.
+    if (configService.get('NODE_ENV', { infer: true }) !== 'production') {
+        setupQueueDashboard(app)
+    }
 
     const port = configService.get('PORT', { infer: true })
 

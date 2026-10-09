@@ -1,7 +1,7 @@
-import { applyDecorators, type Type } from '@nestjs/common'
+import { applyDecorators, HttpStatus, type Type } from '@nestjs/common'
 import {
     ApiExtraModels,
-    ApiOkResponse,
+    ApiResponse,
     type ApiResponseSchemaHost,
     getSchemaPath,
 } from '@nestjs/swagger'
@@ -11,6 +11,8 @@ interface ApiOkResponseDataOptions {
     description?: string
     /** Use quando o endpoint devolve data: null. */
     nullable?: boolean
+    /** Padrão 200; use para documentar outros sucessos, como 202. */
+    status?: HttpStatus
 }
 
 /**
@@ -42,7 +44,8 @@ export function ApiOkResponseData<TModel extends Type<unknown>>(
 
     return applyDecorators(
         ...(model ? [ApiExtraModels(model)] : []),
-        ApiOkResponse({
+        ApiResponse({
+            status: options.status ?? HttpStatus.OK,
             description: options.description,
             schema: {
                 type: 'object',

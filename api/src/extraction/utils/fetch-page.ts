@@ -14,6 +14,9 @@ import { assertPublicUrl } from './assert-public-url.js'
 
 const HTML_CONTENT_TYPES = ['text/html', 'application/xhtml+xml']
 
+/** Respostas que podem mudar numa nova tentativa; os demais 4xx são definitivos. */
+const TRANSIENT_STATUSES = new Set([408, 425, 429])
+
 /**
  * Baixa a página seguindo redirects manualmente, para validar cada destino:
  * um redirect para a rede interna seria uma forma de contornar o bloqueio.
@@ -38,9 +41,11 @@ export async function fetchPage(rawUrl: string): Promise<FetchedPage> {
         }
 
         if (!response.ok) {
-            throw new SourceUnavailableError(
-                `a página respondeu HTTP ${response.status}`,
-            )
+            const message = `a página respondeu HTTP ${response.status}`
+            throw response.status >= 500 ||
+                TRANSIENT_STATUSES.has(response.status)
+                ? new SourceUnavailableError(message)
+                : new NotReadableError(message)
         }
         const contentType = response.headers.get('content-type') ?? ''
         if (!HTML_CONTENT_TYPES.some((type) => contentType.includes(type))) {

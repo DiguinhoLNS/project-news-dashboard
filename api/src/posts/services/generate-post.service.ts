@@ -1,25 +1,37 @@
-import { HttpException, Inject, Injectable, Logger } from '@nestjs/common'
-import { ArticleExtractorService } from '../../extraction/services/article-extractor.service.js'
+import {
+    Inject,
+    Injectable,
+    Logger,
+    ServiceUnavailableException,
+} from '@nestjs/common'
+import { BusinessException } from '../../common/exceptions/business.exception.js'
+import {
+    BlockedUrlError,
+    ExtractionError,
+} from '../../extraction/exceptions/extraction.exception.js'
+import { assertPublicUrl } from '../../extraction/utils/assert-public-url.js'
 import { JobStatus } from '../../generated/prisma/client.js'
-import { ArticleGeneratorService } from '../../generation/services/article-generator.service.js'
 import {
     GENERATION_JOB_REPOSITORY,
     type IGenerationJobRepository,
 } from '../../jobs/interfaces/generation-job-repository.interface.js'
 import { GenerationJobMapper } from '../../jobs/mappers/generation-job.mapper.js'
+import {
+    GENERATION_QUEUE,
+    type IGenerationQueue,
+} from '../../queue/interfaces/generation-queue.interface.js'
 import type { GeneratePostResult } from '../interfaces/generate-post-result.interface.js'
 import { hashUrl, normalizeUrl } from '../utils/normalize-url.js'
-import { toHttpException } from '../utils/to-http-exception.js'
 
 @Injectable()
 export class GeneratePostService {
     private readonly logger = new Logger(GeneratePostService.name)
 
     constructor(
-        private readonly extractor: ArticleExtractorService,
-        private readonly generator: ArticleGeneratorService,
         @Inject(GENERATION_JOB_REPOSITORY)
         private readonly generationJobRepository: IGenerationJobRepository,
+        @Inject(GENERATION_QUEUE)
+        private readonly generationQueue: IGenerationQueue,
     ) {}
 
     async execute(url: string): Promise<GeneratePostResult> {
@@ -34,53 +46,46 @@ export class GeneratePostService {
             return { job: GenerationJobMapper.toEntity(existing), reused: true }
         }
 
+        await this.assertReachable(sourceUrl)
+
         const job = await this.generationJobRepository.create({
             sourceUrl,
             sourceUrlHash,
         })
 
         try {
-            await this.generationJobRepository.update(job.id, {
-                status: JobStatus.EXTRACTING,
-                attempts: job.attempts + 1,
-            })
-            const source = await this.extractor.extract(sourceUrl)
-            const { text: _text, ...metadata } = source
-
-            await this.generationJobRepository.update(job.id, {
-                status: JobStatus.GENERATING,
-                source: metadata,
-            })
-            const generation = await this.generator.generate(source)
-
-            const generated = await this.generationJobRepository.update(
-                job.id,
-                {
-                    status: JobStatus.GENERATED,
-                    article: generation.article,
-                    llmProvider: generation.provider,
-                    llmModel: generation.model,
-                    inputTokens: generation.usage.inputTokens,
-                    outputTokens: generation.usage.outputTokens,
-                },
-            )
-            return {
-                job: GenerationJobMapper.toEntity(generated),
-                reused: false,
-            }
+            await this.generationQueue.enqueue(job.id)
         } catch (error) {
-            const httpError = toHttpException(error)
+            this.logger.error(
+                `Não foi possível enfileirar o job ${job.id}: ${error instanceof Error ? error.message : String(error)}`,
+            )
             await this.generationJobRepository.update(job.id, {
                 status: JobStatus.FAILED,
-                errorMessage:
-                    httpError instanceof HttpException
-                        ? httpError.message
-                        : 'Erro interno ao processar a matéria.',
+                errorMessage: 'A fila de processamento está indisponível.',
             })
-            this.logger.warn(
-                `Falha ao gerar post de ${sourceUrl}: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
+            throw new ServiceUnavailableException(
+                'Não foi possível enviar a matéria para processamento. Tente novamente em instantes.',
             )
-            throw httpError
+        }
+
+        return { job: GenerationJobMapper.toEntity(job), reused: false }
+    }
+
+    private async assertReachable(sourceUrl: string): Promise<void> {
+        try {
+            await assertPublicUrl(new URL(sourceUrl))
+        } catch (error) {
+            if (error instanceof BlockedUrlError) {
+                throw new BusinessException(
+                    `URL não permitida: ${error.message}.`,
+                )
+            }
+            if (error instanceof ExtractionError) {
+                throw new BusinessException(
+                    `Não foi possível acessar a URL: ${error.message}.`,
+                )
+            }
+            throw error
         }
     }
 }
