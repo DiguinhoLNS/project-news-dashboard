@@ -1,0 +1,51 @@
+generator client {
+    provider            = "prisma-client"
+    output              = "../src/generated/prisma"
+    moduleFormat        = "esm"
+    importFileExtension = "js"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+// =========================================================
+// ENUMS
+// =========================================================
+
+enum JobStatus {
+    QUEUED
+    EXTRACTING
+    GENERATING
+    GENERATED
+    PUBLISHING
+    PUBLISHED
+    FAILED
+}
+
+// =========================================================
+// GENERATION JOBS
+// =========================================================
+
+model GenerationJob {
+    id            String    @id @default(uuid())
+    sourceUrl     String    @map("source_url")
+    sourceUrlHash String    @map("source_url_hash")
+    status        JobStatus @default(QUEUED)
+    attempts      Int       @default(0)
+    errorMessage  String?   @map("error_message")
+    source        Json?
+    article       Json?
+    llmProvider   String?   @map("llm_provider")
+    llmModel      String?   @map("llm_model")
+    inputTokens   Int?      @map("input_tokens")
+    outputTokens  Int?      @map("output_tokens")
+    wpPostId      Int?      @map("wp_post_id")
+    permalink     String?
+    createdAt     DateTime  @default(now()) @map("created_at")
+    updatedAt     DateTime  @updatedAt @map("updated_at")
+
+    @@index([sourceUrlHash])
+    @@index([createdAt])
+    @@map("generation_jobs")
+}

@@ -6,7 +6,9 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import type { Env } from './config/interfaces/env.interface.js'
 import { validateEnv } from './config/env.validation.js'
 import { HealthModule } from './health/health.module.js'
+import { JobsModule } from './jobs/jobs.module.js'
 import { PostsModule } from './posts/posts.module.js'
+import { PrismaModule } from './prisma/prisma.module.js'
 import { buildLoggerConfig } from './common/logger/logger.config.js'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js'
@@ -44,7 +46,9 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor.
                 ],
             }),
         }),
+        PrismaModule,
         PostsModule,
+        JobsModule,
         HealthModule,
     ],
     providers: [

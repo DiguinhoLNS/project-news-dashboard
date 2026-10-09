@@ -91,7 +91,7 @@ async function readBody(
     try {
         for (;;) {
             const { done, value } = await reader.read()
-            
+
             if (done) {
                 break
             }
@@ -102,7 +102,7 @@ async function readBody(
                 await reader.cancel()
                 throw new SourceUnavailableError('a página é grande demais')
             }
-            
+
             chunks.push(value)
         }
     } catch (error) {
