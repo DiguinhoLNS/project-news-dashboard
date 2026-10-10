@@ -25,4 +25,27 @@ export class BullMqGenerationQueue implements IGenerationQueue {
             { ...GENERATION_JOB_OPTIONS, jobId },
         )
     }
+
+    async requeue(jobId: string): Promise<boolean> {
+        const job = await this.queue.getJob(jobId)
+
+        if (!job) {
+            await this.enqueue(jobId)
+
+            return true
+        }
+
+        const state = await job.getState()
+
+        if (state !== 'failed' && state !== 'completed') {
+            return false
+        }
+
+        await job.retry(state, {
+            resetAttemptsMade: true,
+            resetAttemptsStarted: true,
+        })
+
+        return true
+    }
 }
