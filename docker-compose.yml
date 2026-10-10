@@ -1,5 +1,12 @@
 name: project-news
 
+x-wordpress-environment: &wordpress-environment
+    WORDPRESS_DB_HOST: mysql
+    WORDPRESS_DB_NAME: wordpress
+    WORDPRESS_DB_USER: wordpress
+    WORDPRESS_DB_PASSWORD: wordpress
+    PROJECT_NEWS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-local-dev-webhook-secret}
+
 services:
     postgres:
         image: postgres:18-alpine
@@ -32,6 +39,63 @@ services:
             timeout: 3s
             retries: 10
 
+    mysql:
+        image: mysql:8.4
+        restart: unless-stopped
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: wordpress
+            MYSQL_USER: wordpress
+            MYSQL_PASSWORD: wordpress
+        ports:
+            - '3307:3306'
+        volumes:
+            - mysql_data:/var/lib/mysql
+        healthcheck:
+            test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent']
+            interval: 5s
+            timeout: 5s
+            retries: 20
+
+    wordpress:
+        image: wordpress:7.1-php8.4-apache
+        restart: unless-stopped
+        depends_on:
+            mysql:
+                condition: service_healthy
+        environment:
+            <<: *wordpress-environment
+        ports:
+            - '8080:80'
+        volumes:
+            - wordpress_data:/var/www/html
+            - ./wordpress/plugins/project-news-receiver:/var/www/html/wp-content/plugins/project-news-receiver
+
+    wp-setup:
+        image: wordpress:cli-php8.4
+        user: '33:33'
+        restart: on-failure
+        depends_on:
+            mysql:
+                condition: service_healthy
+            wordpress:
+                condition: service_started
+        environment:
+            <<: *wordpress-environment
+            HOME: /tmp
+            WORDPRESS_URL: http://localhost:8080
+            WORDPRESS_TITLE: Project News
+            WORDPRESS_ADMIN_USER: admin
+            WORDPRESS_ADMIN_PASSWORD: admin
+            WORDPRESS_ADMIN_EMAIL: admin@example.com
+        entrypoint: ['sh', '/opt/wp-setup.sh']
+        volumes:
+            - wordpress_data:/var/www/html
+            - ./wordpress/plugins/project-news-receiver:/var/www/html/wp-content/plugins/project-news-receiver
+            - ./wordpress/setup.sh:/opt/wp-setup.sh:ro
+
 volumes:
     postgres_data:
     redis_data:
+    mysql_data:
+    wordpress_data:
