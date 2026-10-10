@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Env } from '../../config/interfaces/env.interface.js'
 import { ArticleExtractorService } from '../../extraction/services/article-extractor.service.js'
@@ -17,6 +17,8 @@ import { WordPressPayloadMapper } from '../../publishing/mappers/wordpress-paylo
 
 @Injectable()
 export class ProcessGenerationJobService {
+    private readonly logger = new Logger(ProcessGenerationJobService.name)
+
     constructor(
         private readonly extractor: ArticleExtractorService,
         private readonly generator: ArticleGeneratorService,
@@ -35,10 +37,15 @@ export class ProcessGenerationJobService {
 
         // Se a tentativa anterior falhou no envio, o conteúdo já gerado é
         // reaproveitado: o Gemini não é chamado de novo.
-        const payload =
-            (job.payload as unknown as WordPressPostPayload | null) ??
-            (await this.generate(job, attempt))
+        const stored = job.payload as unknown as WordPressPostPayload | null
+        if (stored) {
+            this.logger.log(
+                `Job ${jobId}: reaproveitando o conteúdo gerado na tentativa anterior`,
+            )
+        }
+        const payload = stored ?? (await this.generate(job, attempt))
 
+        this.logger.log(`Job ${jobId}: enviando ao WordPress`)
         await this.generationJobRepository.update(jobId, {
             status: JobStatus.PUBLISHING,
             attempts: attempt,
@@ -51,12 +58,18 @@ export class ProcessGenerationJobService {
             wpPostId: post.postId,
             permalink: post.permalink,
         })
+        this.logger.log(
+            `Job ${jobId}: publicado como post ${post.postId} (${post.created ? 'novo' : 'já existia'}) ${post.permalink}`,
+        )
     }
 
     private async generate(
         job: GenerationJob,
         attempt: number,
     ): Promise<WordPressPostPayload> {
+        this.logger.log(
+            `Job ${job.id}: lendo a matéria original ${job.sourceUrl}`,
+        )
         await this.generationJobRepository.update(job.id, {
             status: JobStatus.EXTRACTING,
             attempts: attempt,
@@ -65,6 +78,9 @@ export class ProcessGenerationJobService {
         const source = await this.extractor.extract(job.sourceUrl)
         const { text: _text, ...metadata } = source
 
+        this.logger.log(
+            `Job ${job.id}: gerando o conteúdo com a IA ("${source.title}")`,
+        )
         await this.generationJobRepository.update(job.id, {
             status: JobStatus.GENERATING,
             source: metadata,
@@ -89,6 +105,9 @@ export class ProcessGenerationJobService {
             inputTokens: generation.usage.inputTokens,
             outputTokens: generation.usage.outputTokens,
         })
+        this.logger.log(
+            `Job ${job.id}: conteúdo gerado com ${generation.model} (${generation.usage.inputTokens} tokens de entrada, ${generation.usage.outputTokens} de saída)`,
+        )
         return payload
     }
 }

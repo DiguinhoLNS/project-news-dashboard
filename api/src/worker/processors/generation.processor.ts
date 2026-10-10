@@ -34,9 +34,17 @@ export class GenerationProcessor extends WorkerHost {
         const { jobId } = job.data
         const attempt = job.attemptsMade + 1
         const maxAttempts = job.opts.attempts ?? 1
+        const startedAt = performance.now()
+
+        this.logger.log(
+            `Job ${jobId}: iniciando (tentativa ${attempt}/${maxAttempts})`,
+        )
 
         try {
             await this.processGenerationJobService.execute(jobId, attempt)
+            this.logger.log(
+                `Job ${jobId}: concluído em ${((performance.now() - startedAt) / 1000).toFixed(1)} s`,
+            )
         } catch (error) {
             const failure = describeFailure(error)
             const willRetry = failure.retryable && attempt < maxAttempts
