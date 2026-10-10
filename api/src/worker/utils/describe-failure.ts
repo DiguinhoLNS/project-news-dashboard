@@ -7,6 +7,7 @@ import {
     LlmUnavailableError,
     NotAnArticleError,
 } from '../../generation/exceptions/generation.exception.js'
+import { PublishingError } from '../../publishing/exceptions/publishing.exception.js'
 import type { JobFailure } from '../interfaces/job-failure.interface.js'
 
 export function describeFailure(error: unknown): JobFailure {
@@ -37,6 +38,12 @@ export function describeFailure(error: unknown): JobFailure {
     if (error instanceof GenerationError) {
         return {
             message: 'Não foi possível gerar o conteúdo com a IA.',
+            retryable: error.retryable,
+        }
+    }
+    if (error instanceof PublishingError) {
+        return {
+            message: `Não foi possível publicar no WordPress: ${error.message}.`,
             retryable: error.retryable,
         }
     }

@@ -15,5 +15,11 @@ export const envSchema = z.object({
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
     GEMINI_API_KEY: z.string().trim().min(1, 'obrigatória'),
     GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.5-flash-lite'),
+    WORDPRESS_URL: z.url().default('http://localhost:8080'),
+    WORDPRESS_WEBHOOK_SECRET: z
+        .string()
+        .trim()
+        .min(16, 'obrigatória, com pelo menos 16 caracteres'),
+    WORDPRESS_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     WORDPRESS_POST_STATUS: z.enum(['publish', 'draft']).default('publish'),
 })
