@@ -7,6 +7,28 @@ x-wordpress-environment: &wordpress-environment
     WORDPRESS_DB_PASSWORD: wordpress
     PROJECT_NEWS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-local-dev-webhook-secret}
 
+x-database-url: &database-url postgresql://postgres:postgres@postgres:5432/project_news_db?schema=public
+
+# API e worker usam a mesma imagem. O api/.env fornece GEMINI_API_KEY e os
+# ajustes; os endereços abaixo trocam localhost pelos nomes dos serviços.
+# Ambiente local: logs legíveis e Bull Board em /queues (NODE_ENV development).
+x-api-service: &api-service
+    profiles: ['app']
+    build:
+        context: ./api
+        target: runtime
+    init: true
+    restart: unless-stopped
+    env_file:
+        - path: ./api/.env
+          required: false
+    environment: &api-environment
+        NODE_ENV: development
+        DATABASE_URL: *database-url
+        REDIS_URL: redis://redis:6379
+        WORDPRESS_URL: http://wordpress
+        WORDPRESS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-local-dev-webhook-secret}
+
 services:
     postgres:
         image: postgres:18-alpine
@@ -93,6 +115,47 @@ services:
             - wordpress_data:/var/www/html
             - ./wordpress/plugins/project-news-receiver:/var/www/html/wp-content/plugins/project-news-receiver
             - ./wordpress/setup.sh:/opt/wp-setup.sh:ro
+
+    migrate:
+        profiles: ['app']
+        build:
+            context: ./api
+            target: migrate
+        environment:
+            DATABASE_URL: *database-url
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    api:
+        <<: *api-service
+        environment:
+            <<: *api-environment
+            PORT: 3333
+        ports:
+            - '3333:3333'
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
+            redis:
+                condition: service_healthy
+        healthcheck:
+            test: ['CMD-SHELL', 'wget -qO /dev/null http://localhost:3333/api/health || exit 1']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 15s
+
+    worker:
+        <<: *api-service
+        command: ['node', 'dist/worker.js']
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
+            redis:
+                condition: service_healthy
+            wp-setup:
+                condition: service_completed_successfully
 
 volumes:
     postgres_data:
