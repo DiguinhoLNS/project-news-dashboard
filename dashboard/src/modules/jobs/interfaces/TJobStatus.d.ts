@@ -1,0 +1,1 @@
+export type TJobStatus = 'QUEUED' | 'EXTRACTING' | 'GENERATING' | 'GENERATED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED'

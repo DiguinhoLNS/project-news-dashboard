@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd dashboard && yarn dev"],
+      "port": 3000
+    }
+  ]
+}
