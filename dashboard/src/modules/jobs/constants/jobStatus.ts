@@ -2,8 +2,8 @@ import {
     CircleCheck,
     CircleX,
     Clock,
+    FileSearch,
     FileText,
-    LoaderCircle,
     Send,
     Sparkles,
     type LucideIcon
@@ -24,7 +24,7 @@ const jobStatus: Record<TJobStatus, IJobStatusInfo> = {
     },
     EXTRACTING: {
         label: 'Lendo a matéria',
-        icon: LoaderCircle,
+        icon: FileSearch,
         variant: 'secondary'
     },
     GENERATING: {

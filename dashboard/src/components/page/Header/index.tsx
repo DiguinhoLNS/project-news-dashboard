@@ -1,6 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Separator } from '@/components/ui/separator'
@@ -17,10 +18,6 @@ import ThemeToggle from '@/components/common/ThemeToggle'
 import sidebarLinks from '../Sidebar/constants/links'
 
 export default function Header() {
-
-    const pathName = usePathname()
-
-    const currentLink = sidebarLinks.find(item => pathName.startsWith(item.link))
 
     return (
 
@@ -46,14 +43,9 @@ export default function Header() {
                             </BreadcrumbLink>
                         </BreadcrumbItem>
 
-                        {!!currentLink && (
-                            <>
-                                <BreadcrumbSeparator className={clsx('hidden md:block')} />
-                                <BreadcrumbItem>
-                                    <BreadcrumbPage>{currentLink.label}</BreadcrumbPage>
-                                </BreadcrumbItem>
-                            </>
-                        )}
+                        <Suspense>
+                            <CurrentPageCrumb />
+                        </Suspense>
                     </BreadcrumbList>
                 </Breadcrumb>
 
@@ -61,6 +53,27 @@ export default function Header() {
                     <ThemeToggle />
                 </div>
             </header>
+        </>
+
+    )
+
+}
+
+function CurrentPageCrumb() {
+
+    const pathName = usePathname()
+
+    const currentLink = sidebarLinks.find(item => pathName.startsWith(item.link))
+
+    if (!currentLink) return null
+
+    return (
+
+        <>
+            <BreadcrumbSeparator className={clsx('hidden md:block')} />
+            <BreadcrumbItem>
+                <BreadcrumbPage>{currentLink.label}</BreadcrumbPage>
+            </BreadcrumbItem>
         </>
 
     )
