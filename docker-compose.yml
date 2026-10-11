@@ -80,12 +80,29 @@ services:
             timeout: 5s
             retries: 20
 
+    theme-assets:
+        image: node:26.11-alpine
+        working_dir: /theme
+        environment:
+            COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+            YARN_INSTALL_STATE_PATH: /theme/node_modules/.yarn-state.gz
+        command:
+            - sh
+            - -c
+            - npm install -g corepack@0.36.0 --silent && corepack enable && yarn install --immutable && yarn build
+        volumes:
+            - ./wordpress/themes/project-news:/theme
+            - theme_node_modules:/theme/node_modules
+            - theme_yarn_cache:/root/.yarn/berry/cache
+
     wordpress:
         image: wordpress:7.1-php8.4-apache
         restart: unless-stopped
         depends_on:
             mysql:
                 condition: service_healthy
+            theme-assets:
+                condition: service_completed_successfully
         environment:
             <<: *wordpress-environment
         ports:
@@ -165,3 +182,5 @@ volumes:
     redis_data:
     mysql_data:
     wordpress_data:
+    theme_node_modules:
+    theme_yarn_cache:
