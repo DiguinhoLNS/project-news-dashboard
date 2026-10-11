@@ -1,0 +1,35 @@
+// Ordem que o Bootstrap exige para ser personalizado:
+// funções → nossas variáveis → variáveis dele → mapas → mixins → componentes.
+@import 'bootstrap/scss/functions';
+@import 'variables';
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/variables-dark';
+
+// Cor extra da marca: gera .text-accent, .bg-accent, .btn-accent e --bs-accent.
+$theme-colors: map-merge(
+    $theme-colors,
+    (
+        'accent': $brand-accent,
+    )
+);
+
+@import 'bootstrap/scss/maps';
+@import 'bootstrap/scss/mixins';
+@import 'bootstrap/scss/utilities';
+
+// Só os componentes que o tema usa; o resto do Bootstrap não entra no CSS.
+@import 'bootstrap/scss/root';
+@import 'bootstrap/scss/reboot';
+@import 'bootstrap/scss/type';
+@import 'bootstrap/scss/images';
+@import 'bootstrap/scss/containers';
+@import 'bootstrap/scss/grid';
+@import 'bootstrap/scss/buttons';
+@import 'bootstrap/scss/transitions';
+@import 'bootstrap/scss/nav';
+@import 'bootstrap/scss/navbar';
+@import 'bootstrap/scss/card';
+@import 'bootstrap/scss/badge';
+@import 'bootstrap/scss/pagination';
+@import 'bootstrap/scss/helpers';
+@import 'bootstrap/scss/utilities/api';

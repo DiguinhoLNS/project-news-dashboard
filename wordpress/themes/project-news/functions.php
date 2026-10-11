@@ -6,6 +6,8 @@ namespace ProjectNews\Theme;
 
 defined('ABSPATH') || exit;
 
+require_once __DIR__ . '/inc/assets.php';
+
 add_action('after_setup_theme', static function (): void {
     add_theme_support('title-tag');
     add_theme_support('post-thumbnails');
