@@ -6,6 +6,7 @@ x-wordpress-environment: &wordpress-environment
     WORDPRESS_DB_USER: wordpress
     WORDPRESS_DB_PASSWORD: wordpress
     PROJECT_NEWS_WEBHOOK_SECRET: ${WORDPRESS_WEBHOOK_SECRET:-local-dev-webhook-secret}
+    WORDPRESS_CONFIG_EXTRA: define('WP_ENVIRONMENT_TYPE', 'local');
 
 x-database-url: &database-url postgresql://postgres:postgres@postgres:5432/project_news_db?schema=public
 
@@ -92,6 +93,7 @@ services:
         volumes:
             - wordpress_data:/var/www/html
             - ./wordpress/plugins/project-news-receiver:/var/www/html/wp-content/plugins/project-news-receiver
+            - ./wordpress/themes/project-news:/var/www/html/wp-content/themes/project-news
 
     wp-setup:
         image: wordpress:cli-php8.4
@@ -114,6 +116,7 @@ services:
         volumes:
             - wordpress_data:/var/www/html
             - ./wordpress/plugins/project-news-receiver:/var/www/html/wp-content/plugins/project-news-receiver
+            - ./wordpress/themes/project-news:/var/www/html/wp-content/themes/project-news
             - ./wordpress/setup.sh:/opt/wp-setup.sh:ro
 
     migrate:

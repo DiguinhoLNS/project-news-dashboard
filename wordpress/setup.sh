@@ -31,4 +31,8 @@ if ! wp plugin is-active project-news-receiver; then
     wp plugin activate project-news-receiver
 fi
 
+if ! wp theme is-active project-news; then
+    wp theme activate project-news
+fi
+
 echo "WordPress pronto em $WORDPRESS_URL. Configuração concluída; este container encerra aqui."
