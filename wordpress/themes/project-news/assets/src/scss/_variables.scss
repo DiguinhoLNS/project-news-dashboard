@@ -1,24 +1,19 @@
-// Variáveis da marca. São lidas antes das do Bootstrap: como as dele usam
-// !default, os valores daqui prevalecem e se espalham por todos os componentes.
-
-// Paleta
 $brand-ink: #14171f;
 $brand-primary: #0f4c81;
-$brand-accent: #c43d50; // escuro o bastante para texto branco (contraste 5,1:1)
+$brand-accent: #c43d50;
 $brand-paper: #f6f4ef;
 $brand-muted: #5c6370;
 
-// Cores do Bootstrap
 $primary: $brand-primary;
 $secondary: $brand-muted;
 $light: $brand-paper;
+$dark: $brand-ink;
 $body-color: $brand-ink;
 $body-secondary-color: $brand-muted;
 $link-color: $brand-primary;
 $link-decoration: none;
 $link-hover-decoration: underline;
 
-// Tipografia: serifada nos títulos e no texto da matéria, sem serifa na interface
 $font-family-sans-serif: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 $font-family-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
 $headings-font-family: $font-family-serif;
@@ -26,7 +21,6 @@ $headings-font-weight: 700;
 $headings-line-height: 1.2;
 $line-height-base: 1.6;
 
-// Layout e forma
 $container-max-widths: (
     sm: 540px,
     md: 720px,
@@ -37,6 +31,13 @@ $container-max-widths: (
 $border-radius: 0.5rem;
 $border-radius-lg: 0.75rem;
 $card-border-color: rgba($brand-ink, 0.08);
+$card-spacer-x: 0;
+$card-spacer-y: 1rem;
 
-// Do tema (não existem no Bootstrap)
-$article-measure: 44rem; // largura de leitura do texto, perto de 70 caracteres por linha
+$navbar-brand-font-size: 1.6rem;
+$navbar-nav-link-padding-x: 0.85rem;
+$nav-link-font-weight: 500;
+
+$article-measure: 44rem;
+$article-font-size: 1.1875rem;
+$header-offset: 5.5rem;

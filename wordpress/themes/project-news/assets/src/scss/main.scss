@@ -1,5 +1,6 @@
 // Ordem que o Bootstrap exige para ser personalizado:
-// funções → nossas variáveis → variáveis dele → mapas → mixins → componentes.
+// funções → variáveis locais → variáveis bootstrap → mapas → mixins → componentes.
+
 @import 'bootstrap/scss/functions';
 @import 'variables';
 @import 'bootstrap/scss/variables';
@@ -17,7 +18,6 @@ $theme-colors: map-merge(
 @import 'bootstrap/scss/mixins';
 @import 'bootstrap/scss/utilities';
 
-// Só os componentes que o tema usa; o resto do Bootstrap não entra no CSS.
 @import 'bootstrap/scss/root';
 @import 'bootstrap/scss/reboot';
 @import 'bootstrap/scss/type';
@@ -32,4 +32,12 @@ $theme-colors: map-merge(
 @import 'bootstrap/scss/badge';
 @import 'bootstrap/scss/pagination';
 @import 'bootstrap/scss/helpers';
+
+
+@import 'base';
+@import 'components/header';
+@import 'components/cards';
+@import 'components/article';
+@import 'components/footer';
+
 @import 'bootstrap/scss/utilities/api';

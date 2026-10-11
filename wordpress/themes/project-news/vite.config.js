@@ -1,7 +1,5 @@
 import { defineConfig } from 'vite'
 
-// O Vite só compila; quem serve os arquivos é o WordPress (functions.php).
-// Os nomes são fixos e o cache é quebrado pela data do arquivo (filemtime).
 export default defineConfig({
     base: './',
     publicDir: false,

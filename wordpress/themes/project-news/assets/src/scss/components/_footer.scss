@@ -1,0 +1,43 @@
+.site-footer {
+    margin-top: 3rem;
+    color: rgba($white, 0.7);
+    background-color: $dark;
+
+    a {
+        color: $white;
+        text-decoration: none;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    .site-logo {
+        color: $white;
+    }
+
+    &__about {
+        max-width: 32rem;
+    }
+
+    &__title {
+        margin-bottom: 1rem;
+        font-family: $font-family-sans-serif;
+        font-size: $font-size-sm;
+        font-weight: 700;
+        color: $white;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    &__links li {
+        margin-bottom: 0.5rem;
+    }
+
+    &__copy {
+        padding-top: 1.5rem;
+        margin: 2.5rem 0 0;
+        font-size: $font-size-sm;
+        border-top: $border-width solid rgba($white, 0.1);
+    }
+}
