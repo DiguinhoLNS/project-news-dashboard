@@ -1,0 +1,458 @@
+{
+  "info": {
+    "name": "Project News",
+    "description": "Rotas da API do Project News e o webhook do plugin do WordPress.\n\nAs variáveis da collection apontam para o ambiente local do docker compose. Troque os valores na aba Variables se mudou alguma porta ou o segredo do webhook.\n\nOrdem sugerida: **Gerar matéria** salva o id do job em `jobId`; depois use **Detalhe do job** até o status `PUBLISHED`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "apiUrl",
+      "value": "http://localhost:3333/api",
+      "description": "Endereço da API (API_PORT do .env da raiz)"
+    },
+    {
+      "key": "wordpressUrl",
+      "value": "http://localhost:8080",
+      "description": "Endereço do WordPress (WORDPRESS_PORT do .env da raiz)"
+    },
+    {
+      "key": "webhookSecret",
+      "value": "local-dev-webhook-secret",
+      "description": "O mesmo WORDPRESS_WEBHOOK_SECRET do .env da raiz"
+    },
+    {
+      "key": "articleUrl",
+      "value": "https://g1.globo.com/am/amazonas/noticia/2026/10/12/cargueiros-militares-da-fab-vao-apoiar-combate-aos-incendios-florestais-no-amazonas.ghtml",
+      "description": "Matéria enviada em Gerar matéria"
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "description": "Preenchida por Gerar matéria"
+    }
+  ],
+  "item": [
+    {
+      "name": "API",
+      "description": "Todas as respostas vêm no envelope `{ ok, message, data }`.",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API, PostgreSQL e Redis no ar', () => pm.response.to.have.status(200))"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/health",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Confere o PostgreSQL e o Redis. Responde 503 se um deles estiver fora do ar."
+          }
+        },
+        {
+          "name": "Gerar matéria",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 (job novo) ou 200 (URL já enviada)', () => pm.expect(pm.response.code).to.be.oneOf([200, 202]))",
+                  "",
+                  "const job = pm.response.json().data",
+                  "",
+                  "if (job && job.id) {",
+                  "    pm.collectionVariables.set('jobId', job.id)",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"url\": \"{{articleUrl}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{apiUrl}}/generate-post",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "generate-post"
+              ]
+            },
+            "description": "Cria o job e coloca na fila. Responde na hora, sem esperar o processamento.\n\n- `202`: job criado.\n- `200`: a URL já tinha um job em andamento ou concluído; devolve esse job.\n\nO id do job fica salvo na variável `jobId`. Limite: 5 envios por minuto."
+          }
+        },
+        {
+          "name": "Listar jobs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista paginada', () => pm.response.to.have.status(200))"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/jobs?page=1&pageSize=20",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "Máximo de 100"
+                }
+              ]
+            },
+            "description": "Histórico de jobs, dos mais recentes para os mais antigos."
+          }
+        },
+        {
+          "name": "Detalhe do job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Job encontrado', () => pm.response.to.have.status(200))"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{apiUrl}}/jobs/{{jobId}}",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "{{jobId}}"
+              ]
+            },
+            "description": "Status atual, matéria gerada, tokens e post publicado.\n\nEtapas: `QUEUED` → `EXTRACTING` → `GENERATING` → `GENERATED` → `PUBLISHING` → `PUBLISHED`, ou `FAILED` com o motivo em `errorMessage`."
+          }
+        },
+        {
+          "name": "Tentar de novo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 (de volta à fila) ou 409 (job que não falhou)', () => pm.expect(pm.response.code).to.be.oneOf([202, 409]))"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{apiUrl}}/jobs/{{jobId}}/retry",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "jobs",
+                "{{jobId}}",
+                "retry"
+              ]
+            },
+            "description": "Devolve à fila um job `FAILED` (ou `GENERATED` parado). Se o conteúdo já tinha sido gerado, só o envio ao WordPress é refeito, sem nova chamada ao Gemini.\n\nResponde `409` para jobs publicados ou ainda em processamento."
+          }
+        },
+        {
+          "name": "Erros esperados",
+          "item": [
+            {
+              "name": "URL inválida (400)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Corpo recusado pela validação', () => pm.response.to.have.status(400))"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"url\": \"isto-nao-e-uma-url\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{apiUrl}}/generate-post",
+                  "host": [
+                    "{{apiUrl}}"
+                  ],
+                  "path": [
+                    "generate-post"
+                  ]
+                },
+                "description": "A `url` precisa ser http ou https."
+              }
+            },
+            {
+              "name": "URL da rede interna (422)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Endereço interno recusado', () => pm.response.to.have.status(422))"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"url\": \"http://169.254.169.254/latest/meta-data/\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{apiUrl}}/generate-post",
+                  "host": [
+                    "{{apiUrl}}"
+                  ],
+                  "path": [
+                    "generate-post"
+                  ]
+                },
+                "description": "Endereço de metadados de servidores na nuvem, alvo comum de SSRF. A API resolve o DNS e recusa endereços privados, de loopback e link-local."
+              }
+            },
+            {
+              "name": "Job inexistente (404)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Job não encontrado', () => pm.response.to.have.status(404))"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{apiUrl}}/jobs/00000000-0000-4000-8000-000000000000",
+                  "host": [
+                    "{{apiUrl}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "00000000-0000-4000-8000-000000000000"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WordPress (plugin)",
+      "description": "Endpoint do plugin Project News Receiver, que a API chama ao publicar.",
+      "item": [
+        {
+          "name": "Criar post (webhook assinado)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cryptoJs = require('crypto-js')",
+                  "",
+                  "// Assina o corpo exatamente como será enviado: não use {{variáveis}} no corpo.",
+                  "const body = pm.request.body.raw",
+                  "const timestamp = Math.floor(Date.now() / 1000).toString()",
+                  "const secret = pm.variables.get('webhookSecret')",
+                  "const signature = cryptoJs.HmacSHA256(`${timestamp}.${body}`, secret).toString(cryptoJs.enc.Hex)",
+                  "",
+                  "pm.variables.set('webhookTimestamp', timestamp)",
+                  "pm.variables.set('webhookSignature', `sha256=${signature}`)"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 (criado) ou 200 (já existia)', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]))"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Project-News-Timestamp",
+                "value": "{{webhookTimestamp}}"
+              },
+              {
+                "key": "X-Project-News-Signature",
+                "value": "{{webhookSignature}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"4cad1ec5485c39c609f9df7c0b977b79dadb24a909d314d0096900b31e5ff44c\",\n    \"title\": \"Matéria de teste enviada pelo Postman\",\n    \"slug\": \"materia-de-teste-enviada-pelo-postman\",\n    \"excerpt\": \"Resumo da matéria de teste, criada direto no plugin, sem passar pela API.\",\n    \"content_html\": \"<p>Primeiro parágrafo da matéria de teste.</p><h2 id=\\\"contexto\\\">Contexto</h2><p>Segundo parágrafo, depois do subtítulo.</p>\",\n    \"key_points\": [\n        \"Primeiro ponto principal\",\n        \"Segundo ponto principal\",\n        \"Terceiro ponto principal\"\n    ],\n    \"tags\": [\n        \"teste\",\n        \"postman\"\n    ],\n    \"category\": \"Tecnologia\",\n    \"meta_description\": \"Matéria de teste criada direto no plugin Project News Receiver.\",\n    \"reading_time_minutes\": 1,\n    \"featured_image_url\": null,\n    \"source\": {\n        \"url\": \"https://example.com/materia-de-teste\",\n        \"site_name\": \"Example\",\n        \"author\": null,\n        \"published_at\": null\n    },\n    \"status\": \"draft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wordpressUrl}}/wp-json/project-news/v1/posts",
+              "host": [
+                "{{wordpressUrl}}"
+              ],
+              "path": [
+                "wp-json",
+                "project-news",
+                "v1",
+                "posts"
+              ]
+            },
+            "description": "Cria um post direto no plugin, sem passar pela API. O post sai como rascunho (`status: draft`).\n\nO script de pré-requisição assina `\"{timestamp}.{corpo}\"` com HMAC-SHA256 e o `webhookSecret`. A assinatura vale por 5 minutos.\n\n- `201`: post criado.\n- `200`: já existia um post com a mesma `idempotency_key`."
+          }
+        },
+        {
+          "name": "Assinatura inválida (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Envio recusado', () => pm.response.to.have.status(401))"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Project-News-Timestamp",
+                "value": "{{$timestamp}}"
+              },
+              {
+                "key": "X-Project-News-Signature",
+                "value": "sha256=assinatura-invalida"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idempotency_key\": \"4cad1ec5485c39c609f9df7c0b977b79dadb24a909d314d0096900b31e5ff44c\",\n    \"title\": \"Matéria de teste enviada pelo Postman\",\n    \"slug\": \"materia-de-teste-enviada-pelo-postman\",\n    \"excerpt\": \"Resumo da matéria de teste, criada direto no plugin, sem passar pela API.\",\n    \"content_html\": \"<p>Primeiro parágrafo da matéria de teste.</p><h2 id=\\\"contexto\\\">Contexto</h2><p>Segundo parágrafo, depois do subtítulo.</p>\",\n    \"key_points\": [\n        \"Primeiro ponto principal\",\n        \"Segundo ponto principal\",\n        \"Terceiro ponto principal\"\n    ],\n    \"tags\": [\n        \"teste\",\n        \"postman\"\n    ],\n    \"category\": \"Tecnologia\",\n    \"meta_description\": \"Matéria de teste criada direto no plugin Project News Receiver.\",\n    \"reading_time_minutes\": 1,\n    \"featured_image_url\": null,\n    \"source\": {\n        \"url\": \"https://example.com/materia-de-teste\",\n        \"site_name\": \"Example\",\n        \"author\": null,\n        \"published_at\": null\n    },\n    \"status\": \"draft\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wordpressUrl}}/wp-json/project-news/v1/posts",
+              "host": [
+                "{{wordpressUrl}}"
+              ],
+              "path": [
+                "wp-json",
+                "project-news",
+                "v1",
+                "posts"
+              ]
+            },
+            "description": "Sem a assinatura certa, o plugin recusa o envio antes de criar qualquer coisa."
+          }
+        }
+      ]
+    }
+  ]
+}
