@@ -177,6 +177,21 @@ services:
             wp-setup:
                 condition: service_completed_successfully
 
+    dashboard:
+        profiles: ['app']
+        build:
+            context: ./dashboard
+            target: runtime
+        init: true
+        restart: unless-stopped
+        environment:
+            NEWS_API_URL: http://api:3333/api
+        ports:
+            - '3000:3000'
+        depends_on:
+            api:
+                condition: service_healthy
+
 volumes:
     postgres_data:
     redis_data:

@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  
+  output: "standalone",
   cacheComponents: true,
-  // Redireciona no nível HTTP: uma página só com redirect() atrapalha a validação de instant UI.
   async redirects() {
     return [{ source: "/", destination: "/generate", permanent: false }];
   },

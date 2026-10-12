@@ -1,0 +1,7 @@
+node_modules
+.next
+next-env.d.ts
+*.tsbuildinfo
+.yarn/install-state.gz
+.env
+.env.*
