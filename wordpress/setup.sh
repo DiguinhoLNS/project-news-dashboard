@@ -23,6 +23,11 @@ if ! wp core is-installed 2>/dev/null; then
     wp rewrite structure '/%postname%/'
 fi
 
+if [ "$(wp option get siteurl)" != "$WORDPRESS_URL" ]; then
+    wp option update home "$WORDPRESS_URL"
+    wp option update siteurl "$WORDPRESS_URL"
+fi
+
 if ! wp user get redacao >/dev/null 2>&1; then
     wp user create redacao redacao@example.com --role=author --display_name='Redação' --porcelain
 fi
