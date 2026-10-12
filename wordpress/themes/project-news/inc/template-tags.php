@@ -102,6 +102,15 @@ function image_credit(): ?string
     return $source === null ? null : sprintf('Imagem: Reprodução/%s', $source['siteName']);
 }
 
+function latest_posts(int $count = 3): WP_Query
+{
+    return new WP_Query([
+        'posts_per_page' => $count,
+        'ignore_sticky_posts' => true,
+        'no_found_rows' => true,
+    ]);
+}
+
 /** Matérias da mesma editoria; se faltarem, completa com as mais recentes. */
 function related_posts(int $count = 3): WP_Query
 {
