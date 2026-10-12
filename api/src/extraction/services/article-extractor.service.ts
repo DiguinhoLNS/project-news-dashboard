@@ -1,12 +1,14 @@
-import { Readability } from '@mozilla/readability'
-import { Injectable } from '@nestjs/common'
 import { JSDOM } from 'jsdom'
+import { Injectable } from '@nestjs/common'
+import { Readability } from '@mozilla/readability'
 import type { SourceArticle } from '../../generation/interfaces/source-article.interface.js'
-import { MIN_ARTICLE_TEXT_CHARS } from '../constants/extraction.constants.js'
-import { NotReadableError } from '../exceptions/extraction.exception.js'
-import type { FetchedPage } from '../interfaces/fetched-page.interface.js'
 import { fetchPage } from '../utils/fetch-page.js'
 import { htmlToText } from '../utils/html-to-text.js'
+import { absoluteHttpUrl } from '../utils/absolute-http-url.js'
+import { NotReadableError } from '../exceptions/extraction.exception.js'
+import type { FetchedPage } from '../interfaces/fetched-page.interface.js'
+import { MIN_ARTICLE_TEXT_CHARS } from '../constants/extraction.constants.js'
+import { collectImages, normalizeImages } from '../utils/collect-images.js'
 
 @Injectable()
 export class ArticleExtractorService {
@@ -30,8 +32,6 @@ function parseArticle(page: FetchedPage): SourceArticle {
             '[itemprop="author"] [itemprop="name"]',
         )
 
-        // O Readability altera o documento: os metadados são lidos antes.
-        // Open Graph primeiro; schema.org (itemprop) cobre portais como o G1.
         const metadata = {
             title: attr('meta[property="og:title"]') ?? document.title,
             siteName: attr('meta[property="og:site_name"]'),
@@ -49,8 +49,12 @@ function parseArticle(page: FetchedPage): SourceArticle {
             imageUrl:
                 attr('meta[property="og:image"]') ??
                 attr('meta[name="twitter:image"]'),
+            imageAlt:
+                attr('meta[property="og:image:alt"]') ??
+                attr('meta[name="twitter:image:alt"]'),
         }
 
+        normalizeImages(document)
         const article = new Readability(document).parse()
         const text = article?.content ? htmlToText(article.content) : ''
 
@@ -60,8 +64,8 @@ function parseArticle(page: FetchedPage): SourceArticle {
             )
         }
 
-        const siteName =
-            article?.siteName?.trim() || metadata.siteName || page.url.hostname
+        const siteName = article?.siteName?.trim() || metadata.siteName || page.url.hostname
+        const coverUrl = absoluteHttpUrl(metadata.imageUrl, page.url)
 
         return {
             url: page.url.href,
@@ -73,7 +77,12 @@ function parseArticle(page: FetchedPage): SourceArticle {
             siteName,
             author: article?.byline?.trim() || metadata.author || undefined,
             publishedAt: article?.publishedTime?.trim() || metadata.publishedAt,
-            imageUrl: absoluteHttpUrl(metadata.imageUrl, page.url),
+            images: collectImages(
+                article?.content ?? '',
+                coverUrl
+                    ? { url: coverUrl, caption: metadata.imageAlt }
+                    : undefined,
+            ),
         }
     } finally {
         dom.window.close()
@@ -90,18 +99,4 @@ function htmlContentType(contentType: string): string {
 function withoutSiteName(title: string, siteName: string): string {
     const escaped = siteName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     return title.replace(new RegExp(`\\s+[|–—-]\\s+${escaped}\\s*$`, 'i'), '')
-}
-
-function absoluteHttpUrl(value: string | undefined, base: URL) {
-    if (!value) {
-        return undefined
-    }
-    try {
-        const url = new URL(value, base)
-        return url.protocol === 'http:' || url.protocol === 'https:'
-            ? url.href
-            : undefined
-    } catch {
-        return undefined
-    }
 }

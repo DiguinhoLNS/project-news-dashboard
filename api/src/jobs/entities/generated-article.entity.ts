@@ -11,4 +11,5 @@ export class GeneratedArticleEntity {
     @ApiProperty({ enum: ARTICLE_CATEGORIES, enumName: 'ArticleCategory' })
     category: ArticleCategory
     metaDescription: string
+    featuredImageUrl?: string
 }

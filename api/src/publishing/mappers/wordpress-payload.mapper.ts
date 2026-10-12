@@ -1,8 +1,8 @@
-import type { BuildWordPressPayloadInput } from '../interfaces/build-wordpress-payload-input.interface.js'
-import type { WordPressPostPayload } from '../interfaces/wordpress-post-payload.interface.js'
-import { readingTimeMinutes } from '../utils/reading-time.js'
-import { renderArticleHtml } from '../utils/render-article-html.js'
 import { slugify } from '../utils/slugify.js'
+import { renderArticleHtml } from '../utils/render-article-html.js'
+import { readingTimeMinutes } from '../utils/reading-time.js'
+import type { WordPressPostPayload } from '../interfaces/wordpress-post-payload.interface.js'
+import type { BuildWordPressPayloadInput } from '../interfaces/build-wordpress-payload-input.interface.js'
 
 export class WordPressPayloadMapper {
     static toPayload({
@@ -22,7 +22,7 @@ export class WordPressPayloadMapper {
             category: article.category,
             meta_description: article.metaDescription,
             reading_time_minutes: readingTimeMinutes(article.bodyMarkdown),
-            featured_image_url: source.imageUrl ?? null,
+            featured_image_url: article.featuredImageUrl ?? null,
             source: {
                 url: source.url,
                 site_name: source.siteName ?? null,

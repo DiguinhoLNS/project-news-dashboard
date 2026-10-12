@@ -27,7 +27,7 @@ flowchart LR
 
 1. Um cliente envia a URL da matéria para `POST /api/generate-post`. O cliente pode ser o painel, o Postman ou um `curl`. A API valida a URL, cria um job no PostgreSQL, coloca o job na fila e responde na hora com `202`.
 2. O worker pega o job, baixa a página e extrai o texto da matéria.
-3. O Gemini reescreve o texto e devolve um JSON com título, resumo, seções, pontos principais, tags, editoria e meta description.
+3. O Gemini reescreve o texto e devolve um JSON com título, resumo, seções, pontos principais, tags, editoria, meta description e a imagem de destaque escolhida entre as fotos da matéria.
 4. O worker monta o post e o envia ao WordPress por um webhook assinado com HMAC.
 5. O plugin confere a assinatura e cria o post com categoria, tags, imagem de destaque e o crédito da fonte original.
 6. O tema exibe a matéria. O painel mostra o andamento de cada etapa enquanto o job roda.
@@ -163,7 +163,7 @@ cp .env.example .env
 
 | Variável | Padrão | Para que serve |
 |---|---|---|
-| `WORDPRESS_WEBHOOK_SECRET` | `local-dev-webhook-secret` | Segredo do HMAC, compartilhado pela API e pelo WordPress. Veja abaixo como gerar um. |
+| `WORDPRESS_WEBHOOK_SECRET` | `local-dev-webhook-secret` | Segredo do HMAC, compartilhado pela API e pelo WordPress. Veja [como gerar um](#segredo-do-webhook). |
 | `POSTGRES_PORT` | `5433` | Porta do PostgreSQL no host |
 | `REDIS_PORT` | `6380` | Porta do Redis no host |
 | `MYSQL_PORT` | `3307` | Porta do MySQL no host |
@@ -172,6 +172,8 @@ cp .env.example .env
 | `DASHBOARD_PORT` | `3000` | Porta do painel no host |
 
 As portas só mudam o lado do host. Dentro da rede do compose, os serviços se encontram pelo nome (`postgres:5432`, `http://wordpress`, `http://api:3333/api`). Por isso esses endereços ficam no `docker-compose.yml`, e não no `.env`.
+
+##### Segredo do webhook
 
 Para gerar um segredo novo para o `WORDPRESS_WEBHOOK_SECRET`, rode o comando abaixo. Ele gera 32 bytes aleatórios em hexadecimal, ou seja, 64 caracteres:
 
@@ -439,7 +441,8 @@ As variáveis ficam em `api/.env`, criado a partir do `api/.env.example`, e são
 - **Download:**
   - usa `fetch`, com os redirects seguidos manualmente (no máximo 5) para validar cada destino;
   - tem timeout de 15 s e limite de 5 MB.
-- **Texto e metadados.** O Mozilla Readability, com jsdom, extrai o texto. Título, autor, data, site e imagem vêm das meta tags Open Graph e `itemprop`.
+- **Texto e metadados.** O Mozilla Readability, com jsdom, extrai o texto. Título, autor, data, site e imagem principal vêm das meta tags Open Graph e `itemprop`.
+- **Imagens candidatas.** Além da imagem principal (`og:image`), entram até 7 fotos do corpo da matéria que tenham legenda (`figcaption` ou `alt`). O `<amp-img>` do G1 e do ge é convertido antes do Readability, que o descartaria. Miniaturas de vídeo e imagens com menos de 400 px de largura ficam de fora, e a mesma foto em outro tamanho não se repete.
 - **Páginas sem matéria.** Com menos de 400 caracteres de texto, a página não é tratada como matéria. É o caso de paywall e de página vazia.
 - **Erros que não são repetidos.** Os erros 4xx da origem não são repetidos, porque tentar de novo não muda o resultado. As exceções são 408, 425 e 429, que podem passar numa nova tentativa.
 
@@ -454,6 +457,7 @@ As variáveis ficam em `api/.env`, criado a partir do `api/.env.example`, e são
   Uma resposta fora do contrato ganha mais uma tentativa.
 - **Markdown montado no código.** O texto vem como `lead` mais `sections[{ heading, paragraphs }]`, e o Markdown é montado no código. Quando o modelo devolvia Markdown direto, ele errava a posição dos `##`.
 - **Editoria de uma lista fixa.** O modelo escolhe a editoria de uma lista fixa, para o WordPress não acumular categorias parecidas.
+- **Imagem de destaque.** O modelo recebe as legendas das imagens candidatas e devolve em `featured_image` o índice da que melhor ilustra o novo título. Nem sempre a `og:image` é a mais fiel ao título reescrito. Um índice fora da lista não invalida a matéria: o post fica com a imagem principal.
 - **Tokens.** Cada job guarda os tokens de entrada e de saída.
 
 #### Publicação
@@ -625,7 +629,13 @@ Se você rodar o mesmo comando de novo, o plugin responde `200` com o mesmo `pos
     - `wordpress/plugins/project-news-receiver` para `wp-content/plugins/`;
     - `wordpress/themes/project-news` para `wp-content/themes/`.
 2. Na pasta do tema, compile os assets com `yarn install && yarn build`.
-3. Defina o segredo no `wp-config.php`:
+3. Gere um segredo, se ainda não tiver um:
+
+    ```bash
+    node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+    ```
+
+    Defina o valor no `wp-config.php` e use o mesmo no `WORDPRESS_WEBHOOK_SECRET` da API:
 
     ```php
     define('PROJECT_NEWS_WEBHOOK_SECRET', 'o mesmo WORDPRESS_WEBHOOK_SECRET da API');
@@ -639,7 +649,7 @@ Se você rodar o mesmo comando de novo, o plugin responde `200` com o mesmo `pos
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `PROJECT_NEWS_WEBHOOK_SECRET` | obrigatória | O mesmo valor do `WORDPRESS_WEBHOOK_SECRET` da API |
+| `PROJECT_NEWS_WEBHOOK_SECRET` | obrigatória | O mesmo valor do `WORDPRESS_WEBHOOK_SECRET` da API. Veja [como gerar um](#segredo-do-webhook). |
 | `PROJECT_NEWS_AUTHOR_LOGIN` | `redacao` | Login do usuário que assina os posts |
 
 Cada valor pode vir de uma constante no `wp-config.php` ou de uma variável de ambiente. No Docker, o compose passa o segredo como variável de ambiente.

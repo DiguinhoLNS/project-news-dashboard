@@ -10,4 +10,5 @@ export interface GeneratedArticle {
     tags: string[]
     category: ArticleCategory
     metaDescription: string
+    featuredImageUrl?: string
 }

@@ -6,4 +6,5 @@ export interface IGeneratedArticle {
     keyPoints: string[]
     tags: string[]
     metaDescription: string
+    featuredImageUrl?: string
 }

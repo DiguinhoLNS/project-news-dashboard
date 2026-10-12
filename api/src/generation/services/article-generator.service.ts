@@ -6,8 +6,8 @@ import {
     LLM_PROVIDER,
     type LlmUsage,
 } from '../interfaces/llm-provider.interface.js'
-import type { SourceArticle } from '../interfaces/source-article.interface.js'
 import { parseLlmOutput } from '../utils/parse-llm-output.js'
+import type { SourceArticle } from '../interfaces/source-article.interface.js'
 
 /** Uma tentativa extra quando o modelo responde fora do contrato. */
 const MAX_ATTEMPTS = 2
@@ -28,7 +28,7 @@ export class ArticleGeneratorService {
                 usage.outputTokens += response.usage.outputTokens
 
                 return {
-                    article: parseLlmOutput(response.text),
+                    article: parseLlmOutput(response.text, source.images),
                     provider: this.llm.name,
                     model: response.model,
                     usage,

@@ -12,3 +12,11 @@ export const MIN_ARTICLE_TEXT_CHARS = 400
 /** Vários portais bloqueiam user agents desconhecidos. */
 export const FETCH_USER_AGENT =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+
+/** Candidatas a imagem de destaque enviadas à IA, contando a principal. */
+export const MAX_IMAGE_CANDIDATES = 8
+
+/** Abaixo disso é ícone ou miniatura, não serve de destaque. */
+export const MIN_IMAGE_WIDTH = 400
+
+export const MAX_IMAGE_CAPTION_CHARS = 300

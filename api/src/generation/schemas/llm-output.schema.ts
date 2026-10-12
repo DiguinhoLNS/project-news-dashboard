@@ -41,6 +41,12 @@ export const llmOutputSchema = z.object({
         .describe('De 3 a 5 principais pontos da matéria, uma frase cada'),
     tags: z.array(z.string()).describe('De 3 a 6 tags curtas, em minúsculas'),
     category: z.enum(ARTICLE_CATEGORIES).describe('Editoria da matéria'),
+    featured_image: z
+        .int()
+        .min(0)
+        .describe(
+            'Índice, em <imagens>, da imagem que melhor ilustra o novo título; 0 se não houver <imagens>',
+        ),
     meta_description: z
         .string()
         .describe('Descrição para buscadores com até 155 caracteres'),

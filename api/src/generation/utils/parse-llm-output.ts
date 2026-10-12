@@ -4,6 +4,7 @@ import {
     NotAnArticleError,
 } from '../exceptions/generation.exception.js'
 import type { GeneratedArticle } from '../interfaces/generated-article.interface.js'
+import type { SourceImage } from '../interfaces/source-image.interface.js'
 import {
     articleContentSchema,
     llmOutputSchema,
@@ -13,7 +14,10 @@ import {
  * Valida a resposta bruta do modelo. É aqui, e não no provedor, que o
  * contrato é garantido: qualquer provedor passa pelas mesmas regras.
  */
-export function parseLlmOutput(raw: string): GeneratedArticle {
+export function parseLlmOutput(
+    raw: string,
+    images: SourceImage[],
+): GeneratedArticle {
     let json: unknown
     try {
         json = JSON.parse(raw)
@@ -55,5 +59,6 @@ export function parseLlmOutput(raw: string): GeneratedArticle {
         tags: [...new Set(article.tags.map((tag) => tag.toLowerCase()))],
         category: article.category,
         metaDescription: article.meta_description,
+        featuredImageUrl: (images[output.data.featured_image] ?? images[0])?.url,
     }
 }
