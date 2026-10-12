@@ -11,7 +11,7 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
             <SidebarProvider>
                 <Sidebar />
 
-                <SidebarInset>
+                <SidebarInset className={clsx('min-w-0')}>
                     <Header />
 
                     <main className={clsx('flex flex-1 flex-col gap-6 w-full p-4 md:p-6')}>

@@ -5,9 +5,12 @@ import { Check, CircleCheck, CircleX, ExternalLink, LoaderCircle, RotateCw, Tria
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import jobSteps from '@/modules/jobs/constants/jobSteps'
+import jobTones from '@/modules/jobs/constants/jobTones'
 import JobsController from '@/modules/jobs/controllers/jobsController'
 import JobStatusBadge from '@/modules/jobs/components/StatusBadge'
+import type { TJobTone } from '@/modules/jobs/interfaces/TJobTone'
 import type { IGenerationJob } from '@/modules/jobs/interfaces/IGenerationJob'
 
 const MAX_ATTEMPTS = 3
@@ -23,6 +26,8 @@ export default function JobProgress({ job }: JobProgressProps) {
     const isPublished = job.status === 'PUBLISHED'
     const isRunning = JobsController.isRunning(job)
     const isStalled = JobsController.isStalled(job)
+
+    const currentTone: TJobTone = isFailed ? 'destructive' : isRunning ? 'info' : 'warning'
 
     return (
 
@@ -62,24 +67,23 @@ export default function JobProgress({ job }: JobProgressProps) {
                                             aria-hidden
                                             className={clsx(
                                                 'absolute top-8 bottom-0 left-4 w-px -translate-x-1/2',
-                                                isDone ? 'bg-primary' : 'bg-border'
+                                                isDone ? jobTones.success.line : 'bg-border'
                                             )}
                                         />
                                     )}
 
                                     <div
-                                        className={clsx(
+                                        className={cn(
                                             'relative flex shrink-0 items-center justify-center size-8 rounded-full border',
-                                            isDone && 'border-primary bg-primary text-primary-foreground',
-                                            isCurrent && !isFailed && 'border-primary bg-primary/10 text-primary',
-                                            isCurrent && isFailed && 'border-destructive bg-destructive/10 text-destructive',
+                                            isDone && jobTones.success.solid,
+                                            isCurrent && [jobTones[currentTone].soft, 'border-current'],
                                             !isDone && !isCurrent && 'border-border text-muted-foreground'
                                         )}
                                     >
                                         {isDone && <Check className={clsx('size-4')} />}
                                         {isCurrent && isFailed && <X className={clsx('size-4')} />}
-                                        {isCurrent && !isFailed && isRunning && <LoaderCircle className={clsx('size-4 animate-spin')} />}
-                                        {isCurrent && !isFailed && !isRunning && <Icon className={clsx('size-4')} />}
+                                        {isCurrent && currentTone === 'info' && <LoaderCircle className={clsx('size-4 animate-spin')} />}
+                                        {isCurrent && currentTone === 'warning' && <Icon className={clsx('size-4')} />}
                                         {!isDone && !isCurrent && <Icon className={clsx('size-4')} />}
                                     </div>
 
@@ -96,11 +100,13 @@ export default function JobProgress({ job }: JobProgressProps) {
                     </ol>
 
                     {isPublished && !!job.permalink && (
-                        <Alert>
+                        <Alert className={jobTones.success.soft}>
                             <CircleCheck />
                             <AlertTitle>Publicada no WordPress</AlertTitle>
-                            <AlertDescription className={clsx('flex flex-col items-start gap-3')}>
-                                <p>A matéria já está no ar, com o crédito e o link da fonte original.</p>
+                            <AlertDescription>A matéria já está no ar, com o crédito e o link da fonte original.</AlertDescription>
+
+                            {/* Fora do AlertDescription, que sublinha qualquer link dentro dele */}
+                            <div className={clsx('col-start-2 mt-3')}>
                                 <Button
                                     size='sm'
                                     asChild
@@ -114,12 +120,15 @@ export default function JobProgress({ job }: JobProgressProps) {
                                         Ver post publicado
                                     </a>
                                 </Button>
-                            </AlertDescription>
+                            </div>
                         </Alert>
                     )}
 
                     {isFailed && (
-                        <Alert variant='destructive'>
+                        <Alert
+                            variant='destructive'
+                            className={jobTones.destructive.soft}
+                        >
                             <CircleX />
                             <AlertTitle>Não foi possível concluir</AlertTitle>
                             <AlertDescription>
@@ -130,7 +139,7 @@ export default function JobProgress({ job }: JobProgressProps) {
                     )}
 
                     {JobsController.isWaitingRetry(job) && !isStalled && (
-                        <Alert>
+                        <Alert className={jobTones.warning.soft}>
                             <RotateCw />
                             <AlertTitle>A tentativa {job.attempts} falhou</AlertTitle>
                             <AlertDescription>{job.errorMessage}</AlertDescription>
@@ -138,7 +147,7 @@ export default function JobProgress({ job }: JobProgressProps) {
                     )}
 
                     {isStalled && (
-                        <Alert>
+                        <Alert className={jobTones.warning.soft}>
                             <TriangleAlert />
                             <AlertTitle>Job parado</AlertTitle>
                             <AlertDescription>

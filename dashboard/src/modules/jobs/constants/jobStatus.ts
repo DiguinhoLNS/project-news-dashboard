@@ -9,48 +9,49 @@ import {
     type LucideIcon
 } from 'lucide-react'
 import type { TJobStatus } from '../interfaces/TJobStatus'
+import type { TJobTone } from '../interfaces/TJobTone'
 
 interface IJobStatusInfo {
     label: string
     icon: LucideIcon
-    variant: 'default' | 'secondary' | 'destructive' | 'outline'
+    tone: TJobTone
 }
 
 const jobStatus: Record<TJobStatus, IJobStatusInfo> = {
     QUEUED: {
         label: 'Na fila',
         icon: Clock,
-        variant: 'outline'
+        tone: 'neutral'
     },
     EXTRACTING: {
         label: 'Lendo a matéria',
         icon: FileSearch,
-        variant: 'secondary'
+        tone: 'info'
     },
     GENERATING: {
         label: 'Gerando com IA',
         icon: Sparkles,
-        variant: 'secondary'
+        tone: 'info'
     },
     GENERATED: {
         label: 'Conteúdo gerado',
         icon: FileText,
-        variant: 'secondary'
+        tone: 'warning'
     },
     PUBLISHING: {
         label: 'Publicando',
         icon: Send,
-        variant: 'secondary'
+        tone: 'info'
     },
     PUBLISHED: {
         label: 'Publicada',
         icon: CircleCheck,
-        variant: 'default'
+        tone: 'success'
     },
     FAILED: {
         label: 'Falhou',
         icon: CircleX,
-        variant: 'destructive'
+        tone: 'destructive'
     },
 }
 
