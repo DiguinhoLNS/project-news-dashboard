@@ -4,13 +4,17 @@ import {
     Logger,
     ServiceUnavailableException,
 } from '@nestjs/common'
-import { BusinessException } from '../../common/exceptions/business.exception.js'
+import {
+    BusinessException,
+    ConflictBusinessException,
+} from '../../common/exceptions/business.exception.js'
 import {
     BlockedUrlError,
     ExtractionError,
 } from '../../extraction/exceptions/extraction.exception.js'
 import { assertPublicUrl } from '../../extraction/utils/assert-public-url.js'
-import { JobStatus } from '../../generated/prisma/client.js'
+import { type GenerationJob, JobStatus } from '../../generated/prisma/client.js'
+import { ActiveJobConflictError } from '../../jobs/exceptions/active-job-conflict.exception.js'
 import {
     GENERATION_JOB_REPOSITORY,
     type IGenerationJobRepository,
@@ -48,10 +52,18 @@ export class GeneratePostService {
 
         await this.assertReachable(sourceUrl)
 
-        const job = await this.generationJobRepository.create({
-            sourceUrl,
-            sourceUrlHash,
-        })
+        let job: GenerationJob
+        try {
+            job = await this.generationJobRepository.create({
+                sourceUrl,
+                sourceUrlHash,
+            })
+        } catch (error) {
+            if (error instanceof ActiveJobConflictError) {
+                return this.reuseConcurrentJob(sourceUrlHash)
+            }
+            throw error
+        }
 
         try {
             await this.generationQueue.enqueue(job.id)
@@ -69,6 +81,21 @@ export class GeneratePostService {
         }
 
         return { job: GenerationJobMapper.toEntity(job), reused: false }
+    }
+
+    private async reuseConcurrentJob(
+        sourceUrlHash: string,
+    ): Promise<GeneratePostResult> {
+        const existing =
+            await this.generationJobRepository.findLatestActiveByUrlHash(
+                sourceUrlHash,
+            )
+        if (!existing) {
+            throw new ConflictBusinessException(
+                'Esta matéria acabou de ser enviada por outra requisição. Tente novamente em instantes.',
+            )
+        }
+        return { job: GenerationJobMapper.toEntity(existing), reused: true }
     }
 
     private async assertReachable(sourceUrl: string): Promise<void> {

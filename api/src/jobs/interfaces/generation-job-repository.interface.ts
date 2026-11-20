@@ -36,11 +36,13 @@ export interface GenerationJobList {
 export const GENERATION_JOB_REPOSITORY = Symbol('GENERATION_JOB_REPOSITORY')
 
 export interface IGenerationJobRepository {
+    /** @throws ActiveJobConflictError se a URL já tiver um job ativo. */
     create(data: CreateGenerationJobData): Promise<GenerationJob>
     findById(id: string): Promise<GenerationJob | null>
     findLatestActiveByUrlHash(
         sourceUrlHash: string,
     ): Promise<GenerationJob | null>
     list(params: ListGenerationJobsParams): Promise<GenerationJobList>
+    /** @throws ActiveJobConflictError se reativar um job cuja URL já tem outro ativo. */
     update(id: string, data: UpdateGenerationJobData): Promise<GenerationJob>
 }

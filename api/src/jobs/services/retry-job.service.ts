@@ -14,6 +14,7 @@ import {
     type IGenerationQueue,
 } from '../../queue/interfaces/generation-queue.interface.js'
 import { RETRYABLE_JOB_STATUSES } from '../constants/retry-job.constants.js'
+import { ActiveJobConflictError } from '../exceptions/active-job-conflict.exception.js'
 import type { GenerationJobEntity } from '../entities/generation-job.entity.js'
 import {
     GENERATION_JOB_REPOSITORY,
@@ -43,10 +44,20 @@ export class RetryJobService {
 
         // Volta para QUEUED antes de enfileirar: se o worker pegar o job na
         // hora, as etapas dele não são sobrescritas por esta atualização.
-        const queued = await this.generationJobRepository.update(id, {
-            status: JobStatus.QUEUED,
-            errorMessage: null,
-        })
+        let queued: GenerationJob
+        try {
+            queued = await this.generationJobRepository.update(id, {
+                status: JobStatus.QUEUED,
+                errorMessage: null,
+            })
+        } catch (error) {
+            if (error instanceof ActiveJobConflictError) {
+                throw new ConflictBusinessException(
+                    'Esta matéria já tem outro job ativo.',
+                )
+            }
+            throw error
+        }
 
         let requeued: boolean
 
@@ -80,9 +91,7 @@ export class RetryJobService {
             throw new ConflictBusinessException('Este job ainda está em processamento.')
         }
 
-        const latest = await this.generationJobRepository.findLatestActiveByUrlHash(job.sourceUrlHash
-
-        )
+        const latest = await this.generationJobRepository.findLatestActiveByUrlHash(job.sourceUrlHash)
         if (latest && latest.id !== job.id) {
             throw new ConflictBusinessException(`Esta matéria já tem outro job ativo: ${latest.id}.`)
         }

@@ -5,6 +5,7 @@ import {
     Prisma,
 } from '../../generated/prisma/client.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
+import { ActiveJobConflictError } from '../exceptions/active-job-conflict.exception.js'
 import type {
     CreateGenerationJobData,
     GenerationJobList,
@@ -17,8 +18,12 @@ import type {
 export class GenerationJobRepository implements IGenerationJobRepository {
     constructor(private readonly prisma: PrismaService) {}
 
-    create(data: CreateGenerationJobData): Promise<GenerationJob> {
-        return this.prisma.generationJob.create({ data })
+    async create(data: CreateGenerationJobData): Promise<GenerationJob> {
+        try {
+            return await this.prisma.generationJob.create({ data })
+        } catch (error) {
+            throw toConflictError(error)
+        }
     }
 
     findById(id: string): Promise<GenerationJob | null> {
@@ -50,20 +55,34 @@ export class GenerationJobRepository implements IGenerationJobRepository {
         return { items, total }
     }
 
-    update(
+    async update(
         id: string,
         { source, article, payload, ...data }: UpdateGenerationJobData,
     ): Promise<GenerationJob> {
-        return this.prisma.generationJob.update({
-            where: { id },
-            data: {
-                ...data,
-                source: toJson(source),
-                article: toJson(article),
-                payload: toJson(payload),
-            },
-        })
+        try {
+            return await this.prisma.generationJob.update({
+                where: { id },
+                data: {
+                    ...data,
+                    source: toJson(source),
+                    article: toJson(article),
+                    payload: toJson(payload),
+                },
+            })
+        } catch (error) {
+            throw toConflictError(error)
+        }
     }
+}
+
+function toConflictError(error: unknown): unknown {
+    if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+    ) {
+        return new ActiveJobConflictError({ cause: error })
+    }
+    return error
 }
 
 function toJson(value: object | undefined) {
