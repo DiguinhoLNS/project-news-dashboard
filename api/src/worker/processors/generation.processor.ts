@@ -1,7 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger } from '@nestjs/common'
 import { type Job, UnrecoverableError } from 'bullmq'
-import { JobStatus } from '../../generated/prisma/client.js'
+import { JobNotProcessableError } from '../../jobs/domain/generation-job.errors.js'
 import {
     GENERATION_JOB_REPOSITORY,
     type IGenerationJobRepository,
@@ -46,6 +46,11 @@ export class GenerationProcessor extends WorkerHost {
                 `Job ${jobId}: concluído em ${((performance.now() - startedAt) / 1000).toFixed(1)} s`,
             )
         } catch (error) {
+            if (error instanceof JobNotProcessableError) {
+                this.logger.warn(`Job ${jobId}: ignorado, ${error.message}`)
+                return
+            }
+
             const failure = describeFailure(error)
             const willRetry = failure.retryable && attempt < maxAttempts
 
@@ -53,17 +58,41 @@ export class GenerationProcessor extends WorkerHost {
                 `Job ${jobId} falhou (tentativa ${attempt}/${maxAttempts}, ${willRetry ? 'vai tentar de novo' : 'definitivo'}): ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
             )
 
-            await this.generationJobRepository.update(jobId, {
-                status: willRetry ? JobStatus.QUEUED : JobStatus.FAILED,
-                errorMessage: willRetry
+            await this.recordFailure(
+                jobId,
+                willRetry
                     ? `${failure.message} Nova tentativa em instantes.`
                     : failure.message,
-            })
+                willRetry,
+            )
 
             // UnrecoverableError faz o BullMQ desistir sem gastar as tentativas restantes.
             throw failure.retryable
                 ? error
                 : new UnrecoverableError(failure.message)
+        }
+    }
+
+    private async recordFailure(
+        jobId: string,
+        message: string,
+        willRetry: boolean,
+    ): Promise<void> {
+        try {
+            const job = await this.generationJobRepository.findById(jobId)
+            if (!job || job.isTerminal) {
+                return
+            }
+            if (willRetry) {
+                job.scheduleRetry(message)
+            } else {
+                job.fail(message)
+            }
+            await this.generationJobRepository.save(job)
+        } catch (error) {
+            this.logger.error(
+                `Job ${jobId}: não foi possível registrar a falha: ${error instanceof Error ? error.message : String(error)}`,
+            )
         }
     }
 }

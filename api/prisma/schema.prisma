@@ -43,6 +43,7 @@ model GenerationJob {
     outputTokens  Int?      @map("output_tokens")
     wpPostId      Int?      @map("wp_post_id")
     permalink     String?
+    version       Int       @default(0)
     createdAt     DateTime  @default(now()) @map("created_at")
     updatedAt     DateTime  @updatedAt @map("updated_at")
     

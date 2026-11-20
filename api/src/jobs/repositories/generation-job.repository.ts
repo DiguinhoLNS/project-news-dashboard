@@ -1,50 +1,72 @@
 import { Injectable } from '@nestjs/common'
-import {
-    type GenerationJob,
-    JobStatus,
-    Prisma,
-} from '../../generated/prisma/client.js'
+import { Prisma } from '../../generated/prisma/client.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
+import type { GenerationJob } from '../domain/generation-job.js'
+import { ACTIVE_JOB_STATUSES } from '../domain/job-status.js'
 import { ActiveJobConflictError } from '../exceptions/active-job-conflict.exception.js'
+import { StaleJobError } from '../exceptions/stale-job.exception.js'
 import type {
-    CreateGenerationJobData,
     GenerationJobList,
     IGenerationJobRepository,
     ListGenerationJobsParams,
-    UpdateGenerationJobData,
 } from '../interfaces/generation-job-repository.interface.js'
+import { GenerationJobPersistenceMapper as Mapper } from '../mappers/generation-job-persistence.mapper.js'
 
 @Injectable()
 export class GenerationJobRepository implements IGenerationJobRepository {
     constructor(private readonly prisma: PrismaService) {}
 
-    async create(data: CreateGenerationJobData): Promise<GenerationJob> {
+    async create(job: GenerationJob): Promise<GenerationJob> {
+        const { id, sourceUrl, sourceUrlHash, status } = job.toSnapshot()
         try {
-            return await this.prisma.generationJob.create({ data })
+            const row = await this.prisma.generationJob.create({
+                data: { id, sourceUrl, sourceUrlHash, status },
+            })
+            return Mapper.toDomain(row)
         } catch (error) {
-            throw toConflictError(error)
+            throw toRepositoryError(error, id)
         }
     }
 
-    findById(id: string): Promise<GenerationJob | null> {
-        return this.prisma.generationJob.findUnique({ where: { id } })
+    async save(job: GenerationJob): Promise<GenerationJob> {
+        const { id, version } = job.toSnapshot()
+        try {
+            const row = await this.prisma.generationJob.update({
+                where: { id, version },
+                data: {
+                    ...Mapper.toMutableData(job),
+                    version: { increment: 1 },
+                },
+            })
+            return Mapper.toDomain(row)
+        } catch (error) {
+            throw toRepositoryError(error, id)
+        }
     }
 
-    /** Job mais recente da URL que não falhou: em andamento ou concluído. */
-    findLatestActiveByUrlHash(
+    async findById(id: string): Promise<GenerationJob | null> {
+        const row = await this.prisma.generationJob.findUnique({
+            where: { id },
+        })
+        return row ? Mapper.toDomain(row) : null
+    }
+
+    /** Job mais recente da URL que ainda ocupa a URL: em andamento ou concluído. */
+    async findLatestActiveByUrlHash(
         sourceUrlHash: string,
     ): Promise<GenerationJob | null> {
-        return this.prisma.generationJob.findFirst({
-            where: { sourceUrlHash, status: { not: JobStatus.FAILED } },
+        const row = await this.prisma.generationJob.findFirst({
+            where: { sourceUrlHash, status: { in: [...ACTIVE_JOB_STATUSES] } },
             orderBy: { createdAt: 'desc' },
         })
+        return row ? Mapper.toDomain(row) : null
     }
 
     async list({
         page,
         pageSize,
     }: ListGenerationJobsParams): Promise<GenerationJobList> {
-        const [items, total] = await this.prisma.$transaction([
+        const [rows, total] = await this.prisma.$transaction([
             this.prisma.generationJob.findMany({
                 orderBy: { createdAt: 'desc' },
                 skip: (page - 1) * pageSize,
@@ -52,39 +74,18 @@ export class GenerationJobRepository implements IGenerationJobRepository {
             }),
             this.prisma.generationJob.count(),
         ])
-        return { items, total }
+        return { items: rows.map((row) => Mapper.toDomain(row)), total }
     }
+}
 
-    async update(
-        id: string,
-        { source, article, payload, ...data }: UpdateGenerationJobData,
-    ): Promise<GenerationJob> {
-        try {
-            return await this.prisma.generationJob.update({
-                where: { id },
-                data: {
-                    ...data,
-                    source: toJson(source),
-                    article: toJson(article),
-                    payload: toJson(payload),
-                },
-            })
-        } catch (error) {
-            throw toConflictError(error)
+function toRepositoryError(error: unknown, jobId: string): unknown {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+            return new ActiveJobConflictError({ cause: error })
+        }
+        if (error.code === 'P2025') {
+            return new StaleJobError(jobId, { cause: error })
         }
     }
-}
-
-function toConflictError(error: unknown): unknown {
-    if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-    ) {
-        return new ActiveJobConflictError({ cause: error })
-    }
     return error
-}
-
-function toJson(value: object | undefined) {
-    return value as Prisma.InputJsonObject | undefined
 }

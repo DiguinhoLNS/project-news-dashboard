@@ -7,6 +7,7 @@ import {
     LlmUnavailableError,
     NotAnArticleError,
 } from '../../generation/exceptions/generation.exception.js'
+import { InvalidJobTransitionError } from '../../jobs/domain/generation-job.errors.js'
 import { PublishingError } from '../../publishing/exceptions/publishing.exception.js'
 import type { JobFailure } from '../interfaces/job-failure.interface.js'
 
@@ -45,6 +46,12 @@ export function describeFailure(error: unknown): JobFailure {
         return {
             message: `Não foi possível publicar no WordPress: ${error.message}.`,
             retryable: error.retryable,
+        }
+    }
+    if (error instanceof InvalidJobTransitionError) {
+        return {
+            message: 'O job está num estado inválido para esta etapa.',
+            retryable: false,
         }
     }
     return { message: 'Erro interno ao processar a matéria.', retryable: true }

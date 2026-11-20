@@ -13,7 +13,7 @@ import {
     ExtractionError,
 } from '../../extraction/exceptions/extraction.exception.js'
 import { assertPublicUrl } from '../../extraction/utils/assert-public-url.js'
-import { type GenerationJob, JobStatus } from '../../generated/prisma/client.js'
+import { GenerationJob } from '../../jobs/domain/generation-job.js'
 import { ActiveJobConflictError } from '../../jobs/exceptions/active-job-conflict.exception.js'
 import {
     GENERATION_JOB_REPOSITORY,
@@ -47,17 +47,16 @@ export class GeneratePostService {
                 sourceUrlHash,
             )
         if (existing) {
-            return { job: GenerationJobMapper.toEntity(existing), reused: true }
+            return toResult(existing, true)
         }
 
         await this.assertReachable(sourceUrl)
 
         let job: GenerationJob
         try {
-            job = await this.generationJobRepository.create({
-                sourceUrl,
-                sourceUrlHash,
-            })
+            job = await this.generationJobRepository.create(
+                GenerationJob.create(sourceUrl, sourceUrlHash),
+            )
         } catch (error) {
             if (error instanceof ActiveJobConflictError) {
                 return this.reuseConcurrentJob(sourceUrlHash)
@@ -71,16 +70,14 @@ export class GeneratePostService {
             this.logger.error(
                 `Não foi possível enfileirar o job ${job.id}: ${error instanceof Error ? error.message : String(error)}`,
             )
-            await this.generationJobRepository.update(job.id, {
-                status: JobStatus.FAILED,
-                errorMessage: 'A fila de processamento está indisponível.',
-            })
+            job.fail('A fila de processamento está indisponível.')
+            await this.generationJobRepository.save(job)
             throw new ServiceUnavailableException(
                 'Não foi possível enviar a matéria para processamento. Tente novamente em instantes.',
             )
         }
 
-        return { job: GenerationJobMapper.toEntity(job), reused: false }
+        return toResult(job, false)
     }
 
     private async reuseConcurrentJob(
@@ -95,7 +92,7 @@ export class GeneratePostService {
                 'Esta matéria acabou de ser enviada por outra requisição. Tente novamente em instantes.',
             )
         }
-        return { job: GenerationJobMapper.toEntity(existing), reused: true }
+        return toResult(existing, true)
     }
 
     private async assertReachable(sourceUrl: string): Promise<void> {
@@ -114,5 +111,13 @@ export class GeneratePostService {
             }
             throw error
         }
+    }
+}
+
+function toResult(job: GenerationJob, reused: boolean): GeneratePostResult {
+    return {
+        job: GenerationJobMapper.toEntity(job),
+        reused,
+        processed: job.isProcessed,
     }
 }

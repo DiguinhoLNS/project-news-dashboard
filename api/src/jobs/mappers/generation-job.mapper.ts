@@ -1,32 +1,25 @@
-import type { GenerationJob } from '../../generated/prisma/client.js'
-import type { GeneratedArticle } from '../../generation/interfaces/generated-article.interface.js'
+import type { GenerationJob } from '../domain/generation-job.js'
 import type { GenerationJobEntity } from '../entities/generation-job.entity.js'
-import type { SourceMetadata } from '../interfaces/source-metadata.interface.js'
 
+/** Domínio → resposta HTTP. O payload do WordPress não é exposto. */
 export class GenerationJobMapper {
     static toEntity(job: GenerationJob): GenerationJobEntity {
+        const props = job.toSnapshot()
         return {
-            id: job.id,
-            sourceUrl: job.sourceUrl,
-            status: job.status,
-            attempts: job.attempts,
-            errorMessage: job.errorMessage,
-            // Colunas JSON gravadas só pela própria API, já validadas.
-            source: job.source as unknown as SourceMetadata | null,
-            article: job.article as unknown as GeneratedArticle | null,
-            llmProvider: job.llmProvider,
-            llmModel: job.llmModel,
-            usage:
-                job.inputTokens === null || job.outputTokens === null
-                    ? null
-                    : {
-                          inputTokens: job.inputTokens,
-                          outputTokens: job.outputTokens,
-                      },
-            wpPostId: job.wpPostId,
-            permalink: job.permalink,
-            createdAt: job.createdAt,
-            updatedAt: job.updatedAt,
+            id: props.id,
+            sourceUrl: props.sourceUrl,
+            status: props.status,
+            attempts: props.attempts,
+            errorMessage: props.errorMessage,
+            source: props.source,
+            article: props.article,
+            llmProvider: props.llmProvider,
+            llmModel: props.llmModel,
+            usage: props.usage,
+            wpPostId: props.wpPostId,
+            permalink: props.permalink,
+            createdAt: props.createdAt,
+            updatedAt: props.updatedAt,
         }
     }
 }
