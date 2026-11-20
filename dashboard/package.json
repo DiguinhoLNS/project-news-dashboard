@@ -17,7 +17,7 @@
     "cn": "0.4.0",
     "formik": "2.4.9",
     "lucide-react": "1.52.0",
-    "next": "16.4.0",
+    "next": "16.4.6",
     "radix-ui": "1.7.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -34,7 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
