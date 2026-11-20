@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger } from '@nestjs/common'
-import { type Job, UnrecoverableError } from 'bullmq'
+import { DelayedError, type Job, UnrecoverableError } from 'bullmq'
+import { CircuitOpenError } from '../../common/resilience/circuit-breaker.js'
 import { JobNotProcessableError } from '../../jobs/domain/generation-job.errors.js'
 import {
     GENERATION_JOB_REPOSITORY,
@@ -9,6 +10,7 @@ import {
 import { GENERATION_QUEUE_NAME } from '../../queue/constants/generation-queue.constants.js'
 import type { GenerationJobPayload } from '../../queue/interfaces/generation-queue.interface.js'
 import {
+    CIRCUIT_OPEN_JITTER_MS,
     GENERATION_RATE_LIMIT,
     GENERATION_WORKER_CONCURRENCY,
 } from '../constants/generation-worker.constants.js'
@@ -30,7 +32,7 @@ export class GenerationProcessor extends WorkerHost {
         super()
     }
 
-    async process(job: Job<GenerationJobPayload>): Promise<void> {
+    async process(job: Job<GenerationJobPayload>, token?: string): Promise<void> {
         const { jobId } = job.data
         const attempt = job.attemptsMade + 1
         const maxAttempts = job.opts.attempts ?? 1
@@ -49,6 +51,10 @@ export class GenerationProcessor extends WorkerHost {
             if (error instanceof JobNotProcessableError) {
                 this.logger.warn(`Job ${jobId}: ignorado, ${error.message}`)
                 return
+            }
+
+            if (error instanceof CircuitOpenError) {
+                await this.postpone(job, jobId, error, token)
             }
 
             const failure = describeFailure(error)
@@ -71,6 +77,35 @@ export class GenerationProcessor extends WorkerHost {
                 ? error
                 : new UnrecoverableError(failure.message)
         }
+    }
+
+    /**
+     * Dependência com circuito aberto: o job volta para a fila como atrasado
+     * e só roda depois que o circuito puder testar de novo. O DelayedError
+     * faz o BullMQ não contar a tentativa, então uma queda longa do Gemini ou
+     * do WordPress não esgota as 3 tentativas do job.
+     */
+    private async postpone(
+        job: Job<GenerationJobPayload>,
+        jobId: string,
+        error: CircuitOpenError,
+        token: string | undefined,
+    ): Promise<never> {
+        const delayMs =
+            error.retryAfterMs + Math.floor(Math.random() * CIRCUIT_OPEN_JITTER_MS)
+
+        this.logger.warn(
+            `Job ${jobId}: ${error.circuit} com circuito aberto, adiado por ${Math.round(delayMs / 1000)} s sem gastar tentativa`,
+        )
+
+        await this.recordFailure(
+            jobId,
+            `${error.circuit} indisponível no momento. Nova tentativa em ${Math.round(delayMs / 1000)} s.`,
+            true,
+        )
+        await job.moveToDelayed(Date.now() + delayMs, token)
+
+        throw new DelayedError()
     }
 
     private async recordFailure(

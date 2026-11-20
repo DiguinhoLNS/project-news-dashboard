@@ -481,6 +481,13 @@ As variáveis ficam em `api/.env`, criado a partir do `api/.env.example`, e são
 - **Lock otimista.** O job tem uma coluna `version`. Uma gravação só acontece se a versão no banco for a mesma lida. Assim a API e o worker não sobrescrevem as mudanças um do outro.
 - **Um job por id.** O id do job no BullMQ é o mesmo id do banco, então o mesmo job não entra duas vezes na fila.
 - **Ritmo da fila.** Cada job tem 3 tentativas, com backoff exponencial a partir de 15 s. O worker processa 2 jobs ao mesmo tempo e no máximo 8 por minuto, para respeitar a cota do Gemini.
+- **Circuit breaker no Gemini e no WordPress.** Cada dependência passa por um breaker em memória no worker, aplicado como decorator sobre `ILlmProvider` e `IWordPressClient`:
+  - o circuito abre depois de 3 falhas seguidas de indisponibilidade (timeout, rede, 5xx, 429), e fica aberto por 1 min no Gemini e 30 s no WordPress;
+  - erros de negócio, como "não é matéria" ou payload recusado, não contam como falha;
+  - com o circuito aberto, o job nem chama a dependência: volta para a fila como atrasado, com `DelayedError`, sem gastar tentativa. A falha que abre o circuito e a chamada de teste que falha também não gastam tentativa;
+  - depois do tempo aberto, uma chamada de teste decide se o circuito fecha ou abre de novo.
+
+  Sem o breaker, uma queda de alguns minutos esgotava as 3 tentativas de todos os jobs na fila.
 - **Erros temporários e permanentes.** Cada erro é classificado: o temporário ganha nova tentativa, e o permanente (`UnrecoverableError`) falha na hora. O job guarda uma mensagem em português explicando o motivo.
 - **Job já encerrado.** Se um job `FAILED` ou `PUBLISHED` sair da fila, o worker o ignora.
 - **Nova tentativa manual.** `POST /jobs/:id/retry` volta o job para `QUEUED` e grava o pedido no outbox. O relay zera as tentativas no BullMQ e devolve o job à fila. Só aceita jobs `FAILED` ou `GENERATED` parados.
