@@ -7,7 +7,7 @@ import { ApiOkResponseData } from '../../common/decorators/api-response-data.dec
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { GENERATION_QUEUE_NAME } from '../../queue/constants/generation-queue.constants.js'
 import { HealthStatusEntity } from '../entities/health-status.entity.js'
-import { withTimeout } from '../utils/with-timeout.js'
+import { withTimeout } from '../../common/utils/with-timeout.js'
 
 const CHECK_TIMEOUT_MS = 3_000
 

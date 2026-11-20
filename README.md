@@ -16,20 +16,21 @@ Recebe a URL de uma matéria jornalística, reescreve o conteúdo com IA (Google
 ```mermaid
 flowchart LR
     painel["Painel<br/>(Next.js)"] -->|POST /api/generate-post| api["API<br/>(NestJS)"]
-    api -->|enfileira o job| redis[("Redis<br/>BullMQ")]
-    redis --> worker["Worker<br/>(NestJS)"]
+    api -->|job + outbox<br/>na mesma transação| pg[("PostgreSQL")]
+    pg -->|relay lê o outbox| worker["Worker<br/>(NestJS)"]
+    worker -->|enfileira| redis[("Redis<br/>BullMQ")]
+    redis --> worker
     worker -->|lê a matéria| fonte["Site de origem"]
     worker -->|reescreve| gemini["Gemini"]
     worker -->|webhook assinado| wp["WordPress<br/>plugin + tema"]
-    api --- pg[("PostgreSQL")]
-    worker --- pg
 ```
 
-1. Um cliente envia a URL da matéria para `POST /api/generate-post`. O cliente pode ser o painel, o Postman ou um `curl`. A API valida a URL, cria um job no PostgreSQL, coloca o job na fila e responde na hora com `202`.
-2. O worker pega o job, baixa a página e extrai o texto da matéria.
-3. O Gemini reescreve o texto e devolve um JSON com título, resumo, seções, pontos principais, tags, editoria, meta description e a imagem de destaque escolhida entre as fotos da matéria.
-4. O worker monta o post e o envia ao WordPress por um webhook assinado com HMAC.
-5. O plugin confere a assinatura e cria o post com categoria, tags, imagem de destaque e o crédito da fonte original.
+1. Um cliente envia a URL da matéria para `POST /api/generate-post`. O cliente pode ser o painel, o Postman ou um `curl`. A API valida a URL, grava o job e um pedido de processamento (outbox) no PostgreSQL na mesma transação e responde na hora com `202`.
+2. O relay do outbox, que roda no worker, coloca o job na fila do BullMQ.
+3. O worker pega o job, baixa a página e extrai o texto da matéria.
+4. O Gemini reescreve o texto e devolve um JSON com título, resumo, seções, pontos principais, tags, editoria, meta description e a imagem de destaque escolhida entre as fotos da matéria.
+5. O worker monta o post e o envia ao WordPress por um webhook assinado com HMAC.
+6. O plugin confere a assinatura e cria o post com categoria, tags, imagem de destaque e o crédito da fonte original.
 6. O tema exibe a matéria. O painel mostra o andamento de cada etapa enquanto o job roda.
 
 | Parte | Pasta | Stack |
@@ -271,17 +272,17 @@ Respostas de `POST /api/generate-post`:
 
 | Status | Quando |
 |---|---|
-| `202` | Job criado e enviado para a fila |
+| `202` | Job criado. Ele chega à fila pelo outbox, mesmo que o Redis esteja fora no momento. |
 | `200` | A URL já tinha um job em andamento ou concluído. A resposta traz esse job. |
+| `409` | Outra requisição criou o job da mesma URL e ele falhou nesse meio-tempo |
 | `400` | Corpo inválido: sem `url`, ou com uma URL que não é http/https |
 | `422` | A URL aponta para a rede interna ou o domínio não existe |
 | `429` | Mais de 5 envios no mesmo minuto |
-| `503` | Fila indisponível |
 
 `POST /api/jobs/:id/retry` responde `202` quando o job volta para a fila. Os erros são:
 
 - `404`: o job não existe;
-- `409`: o job já foi publicado, ainda está em processamento, ou a mesma URL já tem outro job ativo.
+- `409`: o job já foi publicado, ainda está em processamento, a mesma URL já tem outro job ativo, ou o job mudou durante o reenvio.
 
 #### Ciclo de um job
 
@@ -289,6 +290,8 @@ Respostas de `POST /api/generate-post`:
 QUEUED → EXTRACTING → GENERATING → GENERATED → PUBLISHING → PUBLISHED
                        (qualquer etapa) → FAILED
 ```
+
+As transições ficam na entidade de domínio `GenerationJob` (`src/jobs/domain`), e qualquer transição fora desse fluxo é recusada.
 
 | Status | Etapa |
 |---|---|
@@ -412,9 +415,10 @@ As variáveis ficam em `api/.env`, criado a partir do `api/.env.example`, e são
 
 - **Módulos por domínio:**
   - `posts`: entrada dos pedidos;
-  - `jobs`: histórico e nova tentativa;
+  - `jobs`: a entidade de domínio do job, o histórico e a nova tentativa;
   - `extraction`, `generation` e `publishing`: as três etapas do processamento;
   - `queue` e `worker`: a fila e o processamento dela;
+  - `outbox`: o relay que leva os pedidos de processamento do banco para a fila;
   - `health`: o healthcheck.
 
   Dentro de cada módulo, as pastas são por tipo: `controllers`, `services`, `interfaces`, `providers`, `schemas`, `utils` e outras.
@@ -427,13 +431,16 @@ As variáveis ficam em `api/.env`, criado a partir do `api/.env.example`, e são
   | `IGenerationQueue` | BullMQ |
   | `IWordPressClient` | Cliente HTTP |
   | `IGenerationJobRepository` | Prisma |
+  | `IOutboxRepository` | Prisma (SQL com `SKIP LOCKED`) |
+- **Domínio separado do Prisma.** A entidade `GenerationJob` tem enum de status próprio e um método para cada transição (`startExtraction`, `markGenerated`, `fail`, `requeue`…). Cada método confere se a transição é permitida. Os services só chamam esses métodos e gravam pelo repositório. O tipo do Prisma não sai do repositório, que faz a tradução num mapper.
 - **Respostas e erros:** um interceptor coloca toda resposta no envelope `{ ok, message, data }`. Os erros passam por um filtro global: os 4xx vão para o log como aviso, e os 5xx vão com a stack. Os logs usam pino.
 
 #### Entrada e deduplicação
 
-- **A rota de entrada não processa nada.** O `POST /generate-post` só valida, deduplica e enfileira, e responde em milissegundos.
+- **A rota de entrada não processa nada.** O `POST /generate-post` só valida, deduplica e grava o job, e responde em milissegundos. A API não escreve no Redis.
 - **Deduplicação.** A URL é normalizada (sem `#`, `utm_*`, `fbclid` e `gclid`) e vira um SHA-256. Se a mesma URL já tem um job que não falhou, a API devolve esse job com `200` e não gasta outra chamada ao Gemini.
-- **Proteção contra SSRF.** Antes de enfileirar, a API resolve o DNS e recusa endereços privados, de loopback e link-local. A mesma checagem se repete a cada redirect durante o download.
+- **Deduplicação garantida pelo banco.** Um índice único parcial (`source_url_hash WHERE status <> 'FAILED'`) impede dois jobs ativos para a mesma URL, mesmo com requisições simultâneas. Quem perde a corrida recebe o job que já existe.
+- **Proteção contra SSRF.** Antes de criar o job, a API resolve o DNS e recusa endereços privados, de loopback e link-local. A mesma checagem se repete a cada redirect durante o download.
 - **Limites de requisições.** A rota aceita 5 envios por minuto, porque a cota gratuita do Gemini é baixa. O limite global é de 100 requisições por minuto.
 
 #### Extração
@@ -467,17 +474,22 @@ As variáveis ficam em `api/.env`, criado a partir do `api/.env.example`, e são
 - **Payload reaproveitado.** O payload é salvo no job quando ele chega a `GENERATED`. Se o envio ao WordPress falhar, a próxima tentativa reaproveita o payload e não chama o Gemini de novo.
 - **Quais respostas do WordPress são repetidas.** As respostas 5xx, 408, 409, 425 e 429 ganham nova tentativa. As demais, como 400 e 401, falham na hora, porque repetir não resolveria.
 
-#### Fila e worker
+#### Outbox, fila e worker
 
+- **Outbox transacional.** Criar ou reenviar um job grava, na mesma transação, uma mensagem em `outbox_messages`. Sem isso, o job podia ficar no banco sem nunca chegar à fila: era o caso de o processo cair entre as duas gravações, ou de o Redis estar fora. Um job nessa situação ainda travava a URL pela deduplicação.
+- **Relay.** Roda no worker. A cada segundo, ele reserva até 20 mensagens com `FOR UPDATE SKIP LOCKED`, o que permite várias réplicas sem envio duplicado, e as entrega ao BullMQ. Uma falha (por exemplo, Redis fora) é registrada na mensagem, que volta com backoff exponencial de 1 s até 1 min. A entrega é "pelo menos uma vez", e o envio à fila é idempotente.
+- **Lock otimista.** O job tem uma coluna `version`. Uma gravação só acontece se a versão no banco for a mesma lida. Assim a API e o worker não sobrescrevem as mudanças um do outro.
 - **Um job por id.** O id do job no BullMQ é o mesmo id do banco, então o mesmo job não entra duas vezes na fila.
 - **Ritmo da fila.** Cada job tem 3 tentativas, com backoff exponencial a partir de 15 s. O worker processa 2 jobs ao mesmo tempo e no máximo 8 por minuto, para respeitar a cota do Gemini.
 - **Erros temporários e permanentes.** Cada erro é classificado: o temporário ganha nova tentativa, e o permanente (`UnrecoverableError`) falha na hora. O job guarda uma mensagem em português explicando o motivo.
-- **Nova tentativa manual.** `POST /jobs/:id/retry` zera as tentativas e devolve o job à fila. Só aceita jobs `FAILED` ou `GENERATED` parados.
+- **Job já encerrado.** Se um job `FAILED` ou `PUBLISHED` sair da fila, o worker o ignora.
+- **Nova tentativa manual.** `POST /jobs/:id/retry` volta o job para `QUEUED` e grava o pedido no outbox. O relay zera as tentativas no BullMQ e devolve o job à fila. Só aceita jobs `FAILED` ou `GENERATED` parados.
 
 #### Banco
 
 - **Prisma 7.** Usa o gerador `prisma-client` (ESM) e o adapter `@prisma/adapter-pg`. O código gerado fica em `src/generated`, fora do git.
-- **Uma tabela:** `generation_jobs`. A matéria de origem, a matéria gerada e o payload ficam em colunas JSONB, porque são sempre lidos inteiros, sem consulta por campo.
+- **Duas tabelas:** `generation_jobs` e `outbox_messages`. A matéria de origem, a matéria gerada e o payload ficam em colunas JSONB, porque são sempre lidos inteiros, sem consulta por campo.
+- **Índice parcial só na migration.** O Prisma não representa índice único parcial no schema, então ele existe só em SQL na migration `unique_active_job_per_url`. O `migrate dev` não tenta removê-lo.
 
 #### Docker
 

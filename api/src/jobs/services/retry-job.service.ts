@@ -1,21 +1,9 @@
-import {
-    Inject,
-    Injectable,
-    Logger,
-    ServiceUnavailableException,
-} from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import {
     ConflictBusinessException,
     NotFoundBusinessException,
 } from '../../common/exceptions/business.exception.js'
-import {
-    GENERATION_QUEUE,
-    type IGenerationQueue,
-} from '../../queue/interfaces/generation-queue.interface.js'
-import type {
-    GenerationJob,
-    RequeueSnapshot,
-} from '../domain/generation-job.js'
+import type { GenerationJob } from '../domain/generation-job.js'
 import {
     JobAlreadyPublishedError,
     JobInProgressError,
@@ -36,8 +24,6 @@ export class RetryJobService {
     constructor(
         @Inject(GENERATION_JOB_REPOSITORY)
         private readonly generationJobRepository: IGenerationJobRepository,
-        @Inject(GENERATION_QUEUE)
-        private readonly generationQueue: IGenerationQueue,
     ) {}
 
     async execute(id: string): Promise<GenerationJobEntity> {
@@ -47,36 +33,18 @@ export class RetryJobService {
             throw new NotFoundBusinessException('Job')
         }
 
-        const previous = requeue(job)
+        const previousStatus = job.status
 
-        // Volta para QUEUED antes de enfileirar: se o worker pegar o job na
-        // hora, as etapas dele não são sobrescritas por esta atualização.
-        const queued = await this.saveRequeued(job)
+        requeue(job)
 
-        let requeued: boolean
+        const queued = await this.save(job)
 
-        try {
-            requeued = await this.generationQueue.requeue(id)
-        } catch (error) {
-            this.logger.error(`Não foi possível reenfileirar o job ${id}: ${error instanceof Error ? error.message : String(error)}`)
-
-            await this.undo(queued, previous)
-
-            throw new ServiceUnavailableException('Não foi possível reenviar o job. Tente novamente em instantes.')
-        }
-
-        if (!requeued) {
-            await this.undo(queued, previous)
-
-            throw new ConflictBusinessException('Este job ainda está na fila de processamento.')
-        }
-
-        this.logger.log(`Job ${id} reenviado para a fila (estava ${previous.status})`)
+        this.logger.log(`Job ${id} reenviado para a fila (estava ${previousStatus})`)
 
         return GenerationJobMapper.toEntity(queued)
     }
 
-    private async saveRequeued(job: GenerationJob): Promise<GenerationJob> {
+    private async save(job: GenerationJob): Promise<GenerationJob> {
         try {
             return await this.generationJobRepository.save(job)
         } catch (error) {
@@ -89,23 +57,11 @@ export class RetryJobService {
             throw error
         }
     }
-
-    private async undo(queued: GenerationJob, previous: RequeueSnapshot): Promise<void> {
-        queued.undoRequeue(previous)
-
-        try {
-            await this.generationJobRepository.save(queued)
-        } catch (error) {
-            if (!(error instanceof StaleJobError)) throw error
-
-            this.logger.warn(`Job ${queued.id} mudou antes de o reenvio ser desfeito; mantido como está`)
-        }
-    }
 }
 
-function requeue(job: GenerationJob): RequeueSnapshot {
+function requeue(job: GenerationJob): void {
     try {
-        return job.requeue()
+        job.requeue()
     } catch (error) {
         if (error instanceof JobAlreadyPublishedError) {
             throw new ConflictBusinessException('Esta matéria já foi publicada.')

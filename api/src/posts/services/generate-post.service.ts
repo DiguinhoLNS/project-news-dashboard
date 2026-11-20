@@ -1,9 +1,4 @@
-import {
-    Inject,
-    Injectable,
-    Logger,
-    ServiceUnavailableException,
-} from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import {
     BusinessException,
     ConflictBusinessException,
@@ -20,22 +15,14 @@ import {
     type IGenerationJobRepository,
 } from '../../jobs/interfaces/generation-job-repository.interface.js'
 import { GenerationJobMapper } from '../../jobs/mappers/generation-job.mapper.js'
-import {
-    GENERATION_QUEUE,
-    type IGenerationQueue,
-} from '../../queue/interfaces/generation-queue.interface.js'
 import type { GeneratePostResult } from '../interfaces/generate-post-result.interface.js'
 import { hashUrl, normalizeUrl } from '../utils/normalize-url.js'
 
 @Injectable()
 export class GeneratePostService {
-    private readonly logger = new Logger(GeneratePostService.name)
-
     constructor(
         @Inject(GENERATION_JOB_REPOSITORY)
         private readonly generationJobRepository: IGenerationJobRepository,
-        @Inject(GENERATION_QUEUE)
-        private readonly generationQueue: IGenerationQueue,
     ) {}
 
     async execute(url: string): Promise<GeneratePostResult> {
@@ -62,19 +49,6 @@ export class GeneratePostService {
                 return this.reuseConcurrentJob(sourceUrlHash)
             }
             throw error
-        }
-
-        try {
-            await this.generationQueue.enqueue(job.id)
-        } catch (error) {
-            this.logger.error(
-                `Não foi possível enfileirar o job ${job.id}: ${error instanceof Error ? error.message : String(error)}`,
-            )
-            job.fail('A fila de processamento está indisponível.')
-            await this.generationJobRepository.save(job)
-            throw new ServiceUnavailableException(
-                'Não foi possível enviar a matéria para processamento. Tente novamente em instantes.',
-            )
         }
 
         return toResult(job, false)

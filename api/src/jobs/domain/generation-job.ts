@@ -11,6 +11,10 @@ import {
     JobNotProcessableError,
 } from './generation-job.errors.js'
 import {
+    type GenerationJobEvent,
+    GenerationJobEventType,
+} from './generation-job.events.js'
+import {
     ACTIVE_JOB_STATUSES,
     JobStatus,
     RETRYABLE_JOB_STATUSES,
@@ -43,9 +47,6 @@ export interface GenerationJobProps {
     version: number
 }
 
-/** Estado anterior a um reenvio, para desfazê-lo se a fila recusar. */
-export type RequeueSnapshot = Pick<GenerationJobProps, 'status' | 'errorMessage'>
-
 /**
  * Job de geração de uma matéria. Toda mudança de estado passa por aqui:
  * cada método confere se a transição é permitida antes de aplicá-la.
@@ -54,13 +55,18 @@ export type RequeueSnapshot = Pick<GenerationJobProps, 'status' | 'errorMessage'
  *
  * Qualquer estado não final pode ir para QUEUED (nova tentativa automática)
  * ou FAILED. FAILED e GENERATED podem voltar para QUEUED a pedido do usuário.
+ *
+ * Criar e reenviar registram o evento PROCESSING_REQUESTED: quem põe o job na
+ * fila é o relay do outbox, não o código que mudou o estado.
  */
 export class GenerationJob {
+    private events: GenerationJobEvent[] = []
+
     private constructor(private readonly props: GenerationJobProps) {}
 
     static create(sourceUrl: string, sourceUrlHash: string): GenerationJob {
         const now = new Date()
-        return new GenerationJob({
+        const job = new GenerationJob({
             id: randomUUID(),
             sourceUrl,
             sourceUrlHash,
@@ -79,6 +85,8 @@ export class GenerationJob {
             updatedAt: now,
             version: 0,
         })
+        job.record(GenerationJobEventType.PROCESSING_REQUESTED)
+        return job
     }
 
     /** Reconstrói um job já persistido. Não valida transições. */
@@ -130,6 +138,12 @@ export class GenerationJob {
 
     toSnapshot(): Readonly<GenerationJobProps> {
         return { ...this.props }
+    }
+
+    pullEvents(): GenerationJobEvent[] {
+        const events = this.events
+        this.events = []
+        return events
     }
 
     /** O worker chama ao tirar o job da fila. */
@@ -209,34 +223,21 @@ export class GenerationJob {
         this.props.errorMessage = message
     }
 
-    /** Reenvio pedido pelo usuário. Devolve o estado anterior para um eventual undo. */
-    requeue(): RequeueSnapshot {
+    /** Reenvio pedido pelo usuário. */
+    requeue(): void {
         if (this.props.status === JobStatus.PUBLISHED) {
             throw new JobAlreadyPublishedError(this.props.id)
         }
         if (!RETRYABLE_JOB_STATUSES.includes(this.props.status)) {
             throw new JobInProgressError(this.props.id, this.props.status)
         }
-        const previous: RequeueSnapshot = {
-            status: this.props.status,
-            errorMessage: this.props.errorMessage,
-        }
         this.props.status = JobStatus.QUEUED
         this.props.errorMessage = null
-        return previous
+        this.record(GenerationJobEventType.PROCESSING_REQUESTED)
     }
 
-    /** Desfaz o reenvio quando a fila não aceitou o job. */
-    undoRequeue(previous: RequeueSnapshot): void {
-        if (!RETRYABLE_JOB_STATUSES.includes(previous.status)) {
-            throw new InvalidJobTransitionError(
-                this.props.id,
-                this.props.status,
-                previous.status,
-            )
-        }
-        this.transition([JobStatus.QUEUED], previous.status)
-        this.props.errorMessage = previous.errorMessage
+    private record(type: GenerationJobEventType): void {
+        this.events.push({ type, jobId: this.props.id })
     }
 
     private transitionFromNonTerminal(to: JobStatus): void {

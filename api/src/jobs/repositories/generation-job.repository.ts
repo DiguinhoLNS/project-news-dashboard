@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '../../generated/prisma/client.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import type { GenerationJob } from '../domain/generation-job.js'
+import type { GenerationJobEvent } from '../domain/generation-job.events.js'
 import { ACTIVE_JOB_STATUSES } from '../domain/job-status.js'
 import { ActiveJobConflictError } from '../exceptions/active-job-conflict.exception.js'
 import { StaleJobError } from '../exceptions/stale-job.exception.js'
@@ -18,9 +19,14 @@ export class GenerationJobRepository implements IGenerationJobRepository {
 
     async create(job: GenerationJob): Promise<GenerationJob> {
         const { id, sourceUrl, sourceUrlHash, status } = job.toSnapshot()
+        const events = job.pullEvents()
         try {
-            const row = await this.prisma.generationJob.create({
-                data: { id, sourceUrl, sourceUrlHash, status },
+            const row = await this.prisma.$transaction(async (tx) => {
+                const created = await tx.generationJob.create({
+                    data: { id, sourceUrl, sourceUrlHash, status },
+                })
+                await writeOutbox(tx, events)
+                return created
             })
             return Mapper.toDomain(row)
         } catch (error) {
@@ -30,13 +36,18 @@ export class GenerationJobRepository implements IGenerationJobRepository {
 
     async save(job: GenerationJob): Promise<GenerationJob> {
         const { id, version } = job.toSnapshot()
+        const events = job.pullEvents()
         try {
-            const row = await this.prisma.generationJob.update({
-                where: { id, version },
-                data: {
-                    ...Mapper.toMutableData(job),
-                    version: { increment: 1 },
-                },
+            const row = await this.prisma.$transaction(async (tx) => {
+                const updated = await tx.generationJob.update({
+                    where: { id, version },
+                    data: {
+                        ...Mapper.toMutableData(job),
+                        version: { increment: 1 },
+                    },
+                })
+                await writeOutbox(tx, events)
+                return updated
             })
             return Mapper.toDomain(row)
         } catch (error) {
@@ -76,6 +87,21 @@ export class GenerationJobRepository implements IGenerationJobRepository {
         ])
         return { items: rows.map((row) => Mapper.toDomain(row)), total }
     }
+}
+
+async function writeOutbox(
+    tx: Prisma.TransactionClient,
+    events: GenerationJobEvent[],
+): Promise<void> {
+    if (events.length === 0) {
+        return
+    }
+    await tx.outboxMessage.createMany({
+        data: events.map((event) => ({
+            type: event.type,
+            aggregateId: event.jobId,
+        })),
+    })
 }
 
 function toRepositoryError(error: unknown, jobId: string): unknown {
