@@ -4,7 +4,6 @@ import { Throttle } from '@nestjs/throttler'
 import type { Response } from 'express'
 import { GeneratePostDto } from '../dto/generate-post.dto.js'
 import { GeneratePostService } from '../services/generate-post.service.js'
-import { JobStatus } from '../../generated/prisma/client.js'
 import { GenerationJobEntity } from '../../jobs/entities/generation-job.entity.js'
 import { ApiOkResponseData } from '../../common/decorators/api-response-data.decorator.js'
 import { GENERATE_POST_THROTTLE } from '../constants/generate-post.constants.js'
@@ -31,18 +30,19 @@ export class GeneratePostController {
         @Body() dto: GeneratePostDto,
         @Res({ passthrough: true }) response: Response,
     ) {
-        const { job, reused } = await this.generatePostService.execute(dto.url)
+        const { job, reused, processed } =
+            await this.generatePostService.execute(dto.url)
         response.status(reused ? HttpStatus.OK : HttpStatus.ACCEPTED)
 
-        return { message: describeResult(job.status, reused), data: job }
+        return { message: describeResult(reused, processed), data: job }
     }
 }
 
-function describeResult(status: JobStatus, reused: boolean): string {
+function describeResult(reused: boolean, processed: boolean): string {
     if (!reused) {
         return 'Matéria enviada para processamento.'
     }
-    return status === JobStatus.GENERATED || status === JobStatus.PUBLISHED
+    return processed
         ? 'Esta matéria já foi processada.'
         : 'Esta matéria já está sendo processada.'
 }

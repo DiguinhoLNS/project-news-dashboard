@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
     return [{ source: "/", destination: "/generate", permanent: false }];
   },
   partialPrefetching: true,
+  experimental: {
+    agentUpgrade: "security",
+  },
   turbopack: {
     rules: {
       "*.css": {

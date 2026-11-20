@@ -2,8 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Env } from '../../config/interfaces/env.interface.js'
 import { ArticleExtractorService } from '../../extraction/services/article-extractor.service.js'
-import { type GenerationJob, JobStatus } from '../../generated/prisma/client.js'
 import { ArticleGeneratorService } from '../../generation/services/article-generator.service.js'
+import type { GenerationJob } from '../../jobs/domain/generation-job.js'
 import {
     GENERATION_JOB_REPOSITORY,
     type IGenerationJobRepository,
@@ -12,7 +12,6 @@ import {
     type IWordPressClient,
     WORDPRESS_CLIENT,
 } from '../../publishing/interfaces/wordpress-client.interface.js'
-import type { WordPressPostPayload } from '../../publishing/interfaces/wordpress-post-payload.interface.js'
 import { WordPressPayloadMapper } from '../../publishing/mappers/wordpress-payload.mapper.js'
 
 @Injectable()
@@ -29,35 +28,32 @@ export class ProcessGenerationJobService {
         private readonly wordPressClient: IWordPressClient,
     ) {}
 
+    /** @throws JobNotProcessableError se o job já estiver FAILED ou PUBLISHED. */
     async execute(jobId: string, attempt: number): Promise<void> {
-        const job = await this.generationJobRepository.findById(jobId)
+        let job = await this.generationJobRepository.findById(jobId)
         if (!job) {
             throw new Error(`job ${jobId} não existe no banco`)
         }
+        job.assertProcessable()
 
         // Se a tentativa anterior falhou no envio, o conteúdo já gerado é
         // reaproveitado: o Gemini não é chamado de novo.
-        const stored = job.payload as unknown as WordPressPostPayload | null
-        if (stored) {
+        if (job.hasGeneratedContent) {
             this.logger.log(
                 `Job ${jobId}: reaproveitando o conteúdo gerado na tentativa anterior`,
             )
+        } else {
+            job = await this.generate(job, attempt)
         }
-        const payload = stored ?? (await this.generate(job, attempt))
 
         this.logger.log(`Job ${jobId}: enviando ao WordPress`)
-        await this.generationJobRepository.update(jobId, {
-            status: JobStatus.PUBLISHING,
-            attempts: attempt,
-            errorMessage: null,
-        })
+        const payload = job.startPublishing(attempt)
+        job = await this.generationJobRepository.save(job)
+
         const post = await this.wordPressClient.publish(payload)
 
-        await this.generationJobRepository.update(jobId, {
-            status: JobStatus.PUBLISHED,
-            wpPostId: post.postId,
-            permalink: post.permalink,
-        })
+        job.markPublished(post)
+        await this.generationJobRepository.save(job)
         this.logger.log(
             `Job ${jobId}: publicado como post ${post.postId} (${post.created ? 'novo' : 'já existia'}) ${post.permalink}`,
         )
@@ -66,25 +62,22 @@ export class ProcessGenerationJobService {
     private async generate(
         job: GenerationJob,
         attempt: number,
-    ): Promise<WordPressPostPayload> {
+    ): Promise<GenerationJob> {
         this.logger.log(
             `Job ${job.id}: lendo a matéria original ${job.sourceUrl}`,
         )
-        await this.generationJobRepository.update(job.id, {
-            status: JobStatus.EXTRACTING,
-            attempts: attempt,
-            errorMessage: null,
-        })
+        job.startExtraction(attempt)
+        job = await this.generationJobRepository.save(job)
+
         const source = await this.extractor.extract(job.sourceUrl)
         const { text: _text, ...metadata } = source
 
         this.logger.log(
             `Job ${job.id}: gerando o conteúdo com a IA ("${source.title}")`,
         )
-        await this.generationJobRepository.update(job.id, {
-            status: JobStatus.GENERATING,
-            source: metadata,
-        })
+        job.startGeneration(metadata)
+        job = await this.generationJobRepository.save(job)
+
         const generation = await this.generator.generate(source)
 
         const payload = WordPressPayloadMapper.toPayload({
@@ -96,18 +89,11 @@ export class ProcessGenerationJobService {
             }),
         })
 
-        await this.generationJobRepository.update(job.id, {
-            status: JobStatus.GENERATED,
-            article: generation.article,
-            payload,
-            llmProvider: generation.provider,
-            llmModel: generation.model,
-            inputTokens: generation.usage.inputTokens,
-            outputTokens: generation.usage.outputTokens,
-        })
+        job.markGenerated(generation, payload)
+        job = await this.generationJobRepository.save(job)
         this.logger.log(
             `Job ${job.id}: conteúdo gerado com ${generation.model} (${generation.usage.inputTokens} tokens de entrada, ${generation.usage.outputTokens} de saída)`,
         )
-        return payload
+        return job
     }
 }

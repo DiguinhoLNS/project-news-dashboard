@@ -3,4 +3,5 @@ import type { GenerationJobEntity } from '../../jobs/entities/generation-job.ent
 export interface GeneratePostResult {
     job: GenerationJobEntity
     reused: boolean
+    processed: boolean
 }

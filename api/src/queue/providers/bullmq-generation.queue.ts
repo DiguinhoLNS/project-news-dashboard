@@ -18,34 +18,28 @@ export class BullMqGenerationQueue implements IGenerationQueue {
         private readonly queue: Queue<GenerationJobPayload>,
     ) {}
 
-    async enqueue(jobId: string): Promise<void> {
-        await this.queue.add(
-            GENERATE_POST_JOB,
-            { jobId },
-            { ...GENERATION_JOB_OPTIONS, jobId },
-        )
-    }
-
-    async requeue(jobId: string): Promise<boolean> {
+    async dispatch(jobId: string): Promise<void> {
         const job = await this.queue.getJob(jobId)
 
         if (!job) {
-            await this.enqueue(jobId)
+            await this.queue.add(
+                GENERATE_POST_JOB,
+                { jobId },
+                { ...GENERATION_JOB_OPTIONS, jobId },
+            )
 
-            return true
+            return
         }
 
         const state = await job.getState()
 
         if (state !== 'failed' && state !== 'completed') {
-            return false
+            return
         }
 
         await job.retry(state, {
             resetAttemptsMade: true,
             resetAttemptsStarted: true,
         })
-
-        return true
     }
 }

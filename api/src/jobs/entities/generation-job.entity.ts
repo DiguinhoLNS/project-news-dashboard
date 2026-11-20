@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { JobStatus } from '../../generated/prisma/client.js'
+import { JobStatus } from '../domain/job-status.js'
 import { GeneratedArticleEntity } from './generated-article.entity.js'
 import { LlmUsageEntity } from './llm-usage.entity.js'
 import { SourceMetadataEntity } from './source-metadata.entity.js'

@@ -43,10 +43,29 @@ model GenerationJob {
     outputTokens  Int?      @map("output_tokens")
     wpPostId      Int?      @map("wp_post_id")
     permalink     String?
+    version       Int       @default(0)
     createdAt     DateTime  @default(now()) @map("created_at")
     updatedAt     DateTime  @updatedAt @map("updated_at")
-
+    
     @@index([sourceUrlHash])
     @@index([createdAt])
     @@map("generation_jobs")
+}
+
+// =========================================================
+// OUTBOX
+// =========================================================
+
+model OutboxMessage {
+    id          String    @id @default(uuid())
+    type        String
+    aggregateId String    @map("aggregate_id")
+    attempts    Int       @default(0)
+    lastError   String?   @map("last_error")
+    availableAt DateTime  @default(now()) @map("available_at")
+    processedAt DateTime? @map("processed_at")
+    createdAt   DateTime  @default(now()) @map("created_at")
+
+    @@index([processedAt, availableAt])
+    @@map("outbox_messages")
 }

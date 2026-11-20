@@ -1,27 +1,4 @@
-import type { GenerationJob, JobStatus } from '../../generated/prisma/client.js'
-import type { GeneratedArticle } from '../../generation/interfaces/generated-article.interface.js'
-import type { WordPressPostPayload } from '../../publishing/interfaces/wordpress-post-payload.interface.js'
-import type { SourceMetadata } from './source-metadata.interface.js'
-
-export interface CreateGenerationJobData {
-    sourceUrl: string
-    sourceUrlHash: string
-}
-
-export interface UpdateGenerationJobData {
-    status?: JobStatus
-    attempts?: number
-    errorMessage?: string | null
-    source?: SourceMetadata
-    article?: GeneratedArticle
-    payload?: WordPressPostPayload
-    llmProvider?: string
-    llmModel?: string
-    inputTokens?: number
-    outputTokens?: number
-    wpPostId?: number
-    permalink?: string
-}
+import type { GenerationJob } from '../domain/generation-job.js'
 
 export interface ListGenerationJobsParams {
     page: number
@@ -36,11 +13,26 @@ export interface GenerationJobList {
 export const GENERATION_JOB_REPOSITORY = Symbol('GENERATION_JOB_REPOSITORY')
 
 export interface IGenerationJobRepository {
-    create(data: CreateGenerationJobData): Promise<GenerationJob>
+    /**
+     * Grava o job e os eventos pendentes dele no outbox, atomicamente.
+     *
+     * @throws ActiveJobConflictError se a URL já tiver um job ativo.
+     */
+    create(job: GenerationJob): Promise<GenerationJob>
+
+    /**
+     * Grava o estado atual do job e os eventos pendentes no outbox,
+     * atomicamente, e devolve a versão persistida, que deve substituir a
+     * anterior.
+     *
+     * @throws StaleJobError se outro processo alterou o job desde a leitura.
+     * @throws ActiveJobConflictError se reativar um job cuja URL já tem outro ativo.
+     */
+    save(job: GenerationJob): Promise<GenerationJob>
+
     findById(id: string): Promise<GenerationJob | null>
     findLatestActiveByUrlHash(
         sourceUrlHash: string,
     ): Promise<GenerationJob | null>
     list(params: ListGenerationJobsParams): Promise<GenerationJobList>
-    update(id: string, data: UpdateGenerationJobData): Promise<GenerationJob>
 }
